@@ -1,10 +1,11 @@
 """
-This module takes care of starting the API Server, Loading the DB and Adding the endpoints
+este archivo levanta el servidor flask, carga la base de datos y registra los endpoints
 """
 import os
 from flask import Flask, request, jsonify, url_for, send_from_directory
 from flask_migrate import Migrate
 from flask_swagger import swagger
+from flask_jwt_extended import JWTManager
 from api.utils import APIException, generate_sitemap
 from api.models import db
 from api.routes import api
@@ -19,7 +20,7 @@ static_file_dir = os.path.join(os.path.dirname(
 app = Flask(__name__)
 app.url_map.strict_slashes = False
 
-# database condiguration
+# configuracion de la base de datos
 db_url = os.getenv("DATABASE_URL")
 if db_url is not None:
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url.replace(
@@ -31,23 +32,27 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 MIGRATE = Migrate(app, db, compare_type=True)
 db.init_app(app)
 
-# add the admin
+# jwt usa la misma clave secreta que ya tengo en el .env
+app.config["JWT_SECRET_KEY"] = os.getenv("FLASK_APP_KEY")
+jwt = JWTManager(app)
+
+# activo el panel de admin
 setup_admin(app)
 
-# add the admin
+# activo los comandos personalizados (ej: insert-test-users)
 setup_commands(app)
 
-# Add all endpoints form the API with a "api" prefix
+# registro todos los endpoints de la api bajo el prefijo /api
 app.register_blueprint(api, url_prefix='/api')
 
-# Handle/serialize errors like a JSON object
+# convierto los errores en un json legible
 
 
 @app.errorhandler(APIException)
 def handle_invalid_usage(error):
     return jsonify(error.to_dict()), error.status_code
 
-# generate sitemap with all your endpoints
+# genera el mapa de endpoints disponibles (solo en desarrollo)
 
 
 @app.route('/')
@@ -56,17 +61,17 @@ def sitemap():
         return generate_sitemap(app)
     return send_from_directory(static_file_dir, 'index.html')
 
-# any other endpoint will try to serve it like a static file
+# sirve cualquier otro archivo estatico del frontend
 @app.route('/<path:path>', methods=['GET'])
 def serve_any_other_file(path):
     if not os.path.isfile(os.path.join(static_file_dir, path)):
         path = 'index.html'
     response = send_from_directory(static_file_dir, path)
-    response.cache_control.max_age = 0  # avoid cache memory
+    response.cache_control.max_age = 0  # evito que el navegador cachee
     return response
 
 
-# this only runs if `$ python src/main.py` is executed
+# esto solo corre si ejecuto `$ python src/main.py` directamente
 if __name__ == '__main__':
     PORT = int(os.environ.get('PORT', 3001))
     app.run(host='0.0.0.0', port=PORT, debug=True)
