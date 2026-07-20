@@ -4,12 +4,10 @@ import { LogoGia } from "./LogoGia";
 export const Footer = () => (
 	<footer className="mt-auto relative overflow-hidden bg-gradient-to-b from-white to-douche/25 dark:from-noche-suave dark:to-noche border-t border-douche dark:border-noche-borde">
 
-		{/* una linea de acento arriba, como el filo de una madera */}
 		<div className="h-[3px] w-full bg-gradient-to-r from-noyer via-mantequilla to-noyer opacity-60" />
 
 		<div className="max-w-5xl mx-auto px-6 py-14">
 
-			{/* bloque de arriba: logo + frase + enlaces */}
 			<div className="flex flex-col md:flex-row md:justify-between gap-10 mb-12">
 
 				<div className="max-w-sm">
@@ -63,18 +61,12 @@ export const Footer = () => (
 					</div>
 				</div>
 			</div>
-
-			{/* linea separadora y creditos */}
 			<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-8 border-t border-douche dark:border-noche-borde">
 				<p className="text-xs text-gris-piedra">
 					© {new Date().getFullYear()} GIA · Todos los derechos reservados
 				</p>
-				<p className="text-xs text-gris-piedra flex items-center gap-1.5">
-					Hecho con
-					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" className="stroke-noyer dark:stroke-mantequilla" strokeWidth="2">
-						<path d="M14.7 6.3a4 4 0 0 0-5.6 5.6l-6.4 6.4 2 2 6.4-6.4a4 4 0 0 0 5.6-5.6l-2.5 2.5-1.5-1.5z" />
-					</svg>
-					por <span className="font-semibold text-deep-ocean dark:text-ivoire">Génesis Falcón</span>
+				<p className="text-xs text-gris-piedra">
+					Hecho en España
 				</p>
 			</div>
 		</div>

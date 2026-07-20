@@ -28,25 +28,27 @@ module.exports = {
         "noche-suave": "#2C323C",
         "noche-borde": "#3A4150",
       },
-
       keyframes: {
-        // el tornillo gira unos grados y vuelve, como si apretaras
+        // el tornillo gira mas marcado, como si apretaras de verdad
         apretarTornillo: {
           '0%, 100%': { transform: 'rotate(0deg)' },
-          '40%': { transform: 'rotate(14deg)' },
-          '70%': { transform: 'rotate(10deg)' },
+          '35%': { transform: 'rotate(30deg)' },
+          '60%': { transform: 'rotate(24deg)' },
+          '80%': { transform: 'rotate(28deg)' },
         },
-        // la tuerca sube ligeramente al apretarse
+        // la tuerca sube mas al apretarse
         subirTuerca: {
           '0%, 100%': { transform: 'translateY(0)' },
-          '40%': { transform: 'translateY(-2px)' },
-          '70%': { transform: 'translateY(-1px)' },
+          '35%': { transform: 'translateY(-5px)' },
+          '60%': { transform: 'translateY(-3px)' },
+          '80%': { transform: 'translateY(-4px)' },
         },
       },
       animation: {
-        'apretar-tornillo': 'apretarTornillo 4s ease-in-out infinite',
-        'subir-tuerca': 'subirTuerca 4s ease-in-out infinite',
+        'apretar-tornillo': 'apretarTornillo 3s ease-in-out infinite',
+        'subir-tuerca': 'subirTuerca 3s ease-in-out infinite',
       },
+
     },
   },
 
