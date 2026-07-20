@@ -1,5 +1,4 @@
 import React, { useEffect } from "react"
-import rigoImageUrl from "../assets/img/rigo-baby.jpg";
 import useGlobalReducer from "../hooks/useGlobalReducer.jsx";
 
 export const Home = () => {
@@ -22,7 +21,7 @@ export const Home = () => {
 		} catch (error) {
 			if (error.message) throw new Error(
 				`Could not fetch the message from the backend.
-				Please check if the backend is running and the backend port is public.`
+                Please check if the backend is running and the backend port is public.`
 			);
 		}
 
@@ -34,19 +33,16 @@ export const Home = () => {
 
 	return (
 		<div className="text-center mt-5">
-			<h1 className="display-4">Hello Rigo!!</h1>
-			<p className="lead">
-				<img src={rigoImageUrl} className="img-fluid rounded-circle mb-3" alt="Rigo Baby" />
-			</p>
+			<h1 className="display-4">¡Bienvenida a GIA!</h1>
 			<div className="alert alert-info">
 				{store.message ? (
 					<span>{store.message}</span>
 				) : (
 					<span className="text-danger">
-						Loading message from the backend (make sure your python 🐍 backend is running)...
+						Cargando mensaje del backend (comprueba que tu backend en python esté corriendo)...
 					</span>
 				)}
 			</div>
 		</div>
 	);
-}; 
+};
