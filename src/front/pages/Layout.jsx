@@ -1,15 +1,19 @@
-import { Outlet } from "react-router-dom/dist"
-import ScrollToTop from "../components/ScrollToTop"
-import { Navbar } from "../components/Navbar"
-import { Footer } from "../components/Footer"
+import { Outlet } from "react-router-dom";
+import ScrollToTop from "../components/ScrollToTop";
+import { Navbar } from "../components/Navbar";
+import { Footer } from "../components/Footer";
 
-// Base component that maintains the navbar and footer throughout the page and the scroll to top functionality.
+// min-h-screen + flex-col hace que el footer se pegue abajo del todo
 export const Layout = () => {
     return (
         <ScrollToTop>
-            <Navbar />
-                <Outlet />
-            <Footer />
+            <div className="min-h-screen flex flex-col bg-ivoire dark:bg-noche">
+                <Navbar />
+                <main className="flex-1">
+                    <Outlet />
+                </main>
+                <Footer />
+            </div>
         </ScrollToTop>
-    )
-}
+    );
+};

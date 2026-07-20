@@ -1,0 +1,4 @@
+/* estas tres lineas activan tailwind en todo el proyecto */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
