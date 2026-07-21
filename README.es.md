@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/gia.svg" alt="GIA" width="80">
+<img src="public/gia.svg" alt="GIA" width="80" />
 
 # GIA
 
@@ -12,6 +12,7 @@ Sube el manual, haz una foto de la pieza y deja que GIA te acompañe paso a paso
 
 </div>
 
+
 ## El problema
 
 Todos hemos estado ahí: una caja abierta en el suelo, treinta piezas sin etiquetar y un manual lleno de dibujos que no hay quien interprete.
@@ -19,6 +20,7 @@ Todos hemos estado ahí: una caja abierta en el suelo, treinta piezas sin etique
 La idea de GIA nace de una mudanza real. Aunque tenía los manuales delante, seguía siendo imposible saber qué pieza iba dónde o si el montaje se estaba haciendo correctamente.
 
 Existen aplicaciones para comprar muebles. Sin embargo, no hay ninguna que te acompañe mientras los montas.
+
 
 ## Qué hace GIA
 
@@ -30,11 +32,13 @@ GIA no es un chatbot genérico. Es un asistente que interpreta el manual de tu m
 - **Resuelve dudas en tiempo real.** Puedes preguntarle cualquier cosa mientras realizas el montaje.
 - **Guarda tu progreso.** Permite retomar el montaje exactamente donde lo dejaste.
 
-## Para quién
+### Para quién
 
 GIA está pensado tanto para particulares como para profesionales: montadores, carpinteros, electricistas, empresas de montaje y empresas de mudanzas.
 
 Cada perfil dispone de una experiencia adaptada a sus necesidades.
+
+
 
 ## Stack tecnológico
 
@@ -43,7 +47,7 @@ El proyecto está dividido en tres bloques principales: frontend, backend y serv
 ### Frontend
 
 | Tecnología | Uso |
-| --- | --- |
+|---|---|
 | React + Vite | Interfaz de usuario y entorno de desarrollo |
 | Tailwind CSS | Estilos y sistema de diseño |
 | React Router DOM | Navegación entre páginas |
@@ -52,7 +56,7 @@ El proyecto está dividido en tres bloques principales: frontend, backend y serv
 ### Backend
 
 | Tecnología | Uso |
-| --- | --- |
+|---|---|
 | Python 3.12 + Flask | API REST |
 | PostgreSQL | Base de datos |
 | SQLAlchemy | ORM |
@@ -63,10 +67,47 @@ El proyecto está dividido en tres bloques principales: frontend, backend y serv
 ### Servicios
 
 | Servicio | Uso |
-| --- | --- |
+|---|---|
 | Groq | Modelo de lenguaje para el asistente |
 | Cloudinary | Almacenamiento de imágenes |
 | Render | Despliegue |
+
+## Estructura del proyecto
+
+```
+MontIA/
+├── public/
+│   └── gia.svg
+├── src/
+│   ├── api/
+│   │   ├── models.py
+│   │   ├── routes.py
+│   │   ├── utils.py
+│   │   ├── admin.py
+│   │   └── commands.py
+│   ├── front/
+│   │   ├── pages/
+│   │   │   ├── Home.jsx
+│   │   │   ├── Login.jsx
+│   │   │   ├── Register.jsx
+│   │   │   └── Layout.jsx
+│   │   ├── components/
+│   │   │   ├── Navbar.jsx
+│   │   │   ├── Footer.jsx
+│   │   │   ├── LogoGia.jsx
+│   │   │   └── ToggleTema.jsx
+│   │   ├── hooks/
+│   │   │   └── useGlobalReducer.jsx
+│   │   ├── routes.jsx
+│   │   ├── store.js
+│   │   └── index.css
+│   ├── app.py
+│   └── wsgi.py
+├── migrations/
+├── tailwind.config.js
+├── .env.example
+└── Pipfile
+```
 
 
 ## Sistema de diseño
@@ -76,7 +117,7 @@ La identidad de GIA sigue un estilo minimalista con inspiración escandinava. Se
 Toda la paleta está definida en `tailwind.config.js` y se aplica mediante clases de Tailwind en toda la aplicación.
 
 | Color | Hex | Uso |
-| --- | --- | --- |
+|---|---|---|
 | Deep Ocean | `#3C5160` | Color principal, textos y acciones |
 | Ocean Vivo | `#2C4A63` | Degradados en botones |
 | Sky | `#A9B5C2` | Acentos en modo oscuro |
@@ -90,6 +131,7 @@ Toda la paleta está definida en `tailwind.config.js` y se aplica mediante clase
 **Modo claro y oscuro:** GIA detecta la preferencia del sistema operativo la primera vez que se utiliza y permite cambiar entre ambos modos en cualquier momento. La elección del usuario queda guardada para las siguientes sesiones.
 
 **Logo:** representa un tornillo y una tuerca en el momento exacto del ensamblaje. La animación, en la que el tornillo gira mientras la tuerca asciende hasta ajustarse, simboliza el acto de montar, fijar y asegurar cada pieza.
+
 
 ## Puesta en marcha
 
@@ -119,7 +161,7 @@ cp .env.example .env
 
 Una vez creado el archivo `.env`, complétalo con tus propios valores:
 
-```env
+```
 DATABASE_URL=postgresql://usuario@localhost:5432/montia
 FLASK_APP_KEY="clave-secreta-larga-y-aleatoria"
 FLASK_APP=src/app.py
@@ -154,7 +196,7 @@ npm run start
 La API expone los endpoints necesarios para el registro, la autenticación y la comprobación de que el servicio está funcionando correctamente.
 
 | Método | Endpoint | Descripción |
-| --- | --- | --- |
+|---|---|---|
 | `POST` | `/api/register` | Crea una cuenta. Valida los datos, comprueba si el usuario ya existe y almacena la contraseña de forma segura. |
 | `POST` | `/api/login` | Verifica las credenciales y devuelve un token JWT. |
 | `GET` | `/api/hello` | Endpoint de prueba para comprobar la conexión. |
@@ -170,6 +212,18 @@ Desde el primer commit se han seguido una serie de medidas para proteger la apli
 - **El `user_id` se obtiene siempre del token**, nunca del cuerpo de la petición, evitando vulnerabilidades de tipo IDOR.
 - **Las claves nunca se almacenan en el código.** Todas las variables sensibles se gestionan desde el archivo `.env`, incluido en `.gitignore`.
 - **Validación tanto en frontend como en backend.** La validación del cliente mejora la experiencia de usuario, mientras que la del servidor garantiza la seguridad de la aplicación.
+
+
+## Flujo de trabajo
+
+```
+main          ← producción
+  └── develop ← integración de lo probado
+        └── feature/* ← desarrollo del día a día
+```
+
+Cada bloque de funcionalidad se desarrolla en su propia rama `feature/*` y se integra en `develop` mediante Pull Request, una vez terminado y probado.
+
 
 
 ## Estado del proyecto
@@ -201,11 +255,9 @@ Desde el primer commit se han seguido una serie de medidas para proteger la apli
 - [ ] Control por voz para trabajar con las manos libres
 - [ ] Herramientas de gestión para profesionales
 
-
 ## Licencia
 
 Este proyecto ha sido desarrollado con fines formativos y de portfolio.
-
 
 
 <div align="center">
