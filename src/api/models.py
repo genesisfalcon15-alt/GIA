@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import String, Boolean, Integer
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, Boolean, Integer, Text, ForeignKey, DateTime, JSON
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
@@ -25,6 +26,9 @@ class User(db.Model):
     daily_message_count: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     last_message_date: Mapped[str] = mapped_column(String(10), nullable=True)
 
+    # relacion con Project: un user tiene muchos montajes
+    projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
     # guardo la contraseña encriptada, nunca tal cual
     def set_password(self, password):
         self.password = generate_password_hash(password)
@@ -40,4 +44,139 @@ class User(db.Model):
             "role": self.role,
             "is_pro": self.is_pro,
             # el password no se saca nunca
+        }
+
+
+class Project(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # quien es dueno del montaje, aqui se verifica si puede acceder o no
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
+    user: Mapped[User] = relationship(back_populates="projects")
+
+    # titulo del montaje (ej: sofá söderhamn, armario pax...)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # en progreso, completado, pausado
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="en_progreso")
+
+    # relacion con Manual: cada montaje puede tener su manual
+    manuals: Mapped[list["Manual"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+
+    # relacion con ChatHistory: todas las conversaciones de este montaje
+    chat_history: Mapped[list["ChatHistory"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+
+    # timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "title": self.title,
+            "status": self.status,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class Manual(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # cadena de seguridad: user -> project -> manual, imposible acceder sin permiso
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    project: Mapped[Project] = relationship(back_populates="manuals")
+
+    # url en cloudinary donde guardamos el pdf
+    file_url: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    # nombre original del archivo para mostrar al usuario
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # procesando, listo, error, o error_no_digital si es solo imagenes
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="procesando")
+
+    # cuantos fragmentos generamos del manual (para la ui)
+    total_chunks: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
+
+    # relacion con ManualChunk: los trozos trocados del manual
+    chunks: Mapped[list["ManualChunk"]] = relationship(back_populates="manual", cascade="all, delete-orphan")
+
+    # timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "original_filename": self.original_filename,
+            "status": self.status,
+            "total_chunks": self.total_chunks,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class ManualChunk(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # a que manual pertenece este fragmento
+    manual_id: Mapped[int] = mapped_column(ForeignKey("manual.id"), nullable=False)
+    manual: Mapped[Manual] = relationship(back_populates="chunks")
+
+    # el texto del fragmento (puede ser largo, por eso Text)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # vector de búsqueda, 1536 numeros que representan el significado del fragmento
+    embedding: Mapped[list[float]] = mapped_column(JSON, nullable=True)
+
+    # de que pagina viene (si el pdf tiene paginas)
+    page_number: Mapped[int] = mapped_column(Integer(), nullable=True)
+
+    # en que orden va el fragmento dentro del manual (paso 1, paso 2, etc)
+    chunk_index: Mapped[int] = mapped_column(Integer(), nullable=False)
+
+    # timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "manual_id": self.manual_id,
+            "content": self.content,
+            "page_number": self.page_number,
+            "chunk_index": self.chunk_index,
+        }
+
+
+class ChatHistory(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # a que montaje pertenece esta conversacion
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    project: Mapped[Project] = relationship(back_populates="chat_history")
+
+    # lo que pregunto el usuario
+    user_message: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # lo que contesto gia
+    gia_response: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # ids de los chunks que uso para responder, asi el frontend los resalta
+    chunks_used: Mapped[list[int]] = mapped_column(JSON, nullable=True)
+
+    # cuantos tokens gaste en esta llamada (para auditar costos)
+    tokens_used: Mapped[int] = mapped_column(Integer(), nullable=True)
+
+    # timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "user_message": self.user_message,
+            "gia_response": self.gia_response,
+            "chunks_used": self.chunks_used,
+            "tokens_used": self.tokens_used,
+            "created_at": self.created_at.isoformat(),
         }
