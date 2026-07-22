@@ -1,7 +1,18 @@
+import cloudinary
+import cloudinary.uploader
+import os
 from flask import request, jsonify, Blueprint
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from api.models import db, Project, Manual
 from api.utils import APIException
+from api.pdf_processor import extraer_y_trocear_pdf
+
+# configuro cloudinary con las credenciales del .env
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET")
+)
 
 # creo el blueprint de manuales
 manuals_bp = Blueprint('manuals', __name__)
@@ -41,9 +52,17 @@ def upload_manual(project_id):
     if not file_content.startswith(b'%PDF'):
         raise APIException("el archivo no es un pdf válido", status_code=400)
 
-    # TODO: subir a cloudinary
-    # por ahora, solo guardamos la referencia en la bd con un url fake
-    file_url = f"https://cloudinary.com/placeholder/{file.filename}"
+    # subo a cloudinary
+    try:
+        upload_response = cloudinary.uploader.upload(
+            file_content,
+            resource_type="raw",
+            folder=f"gia/project_{project_id}",
+            public_id=file.filename.replace('.pdf', '')
+        )
+        file_url = upload_response['secure_url']
+    except Exception as err:
+        raise APIException(f"error subiendo a cloudinary: {str(err)}", status_code=500)
 
     # creo el registro en la bd: el manual está en estado "procesando"
     manual = Manual(
@@ -58,6 +77,8 @@ def upload_manual(project_id):
     db.session.commit()
 
     # TODO: lanzar el job asincrónico que procesa el pdf
+    # por ahora lo hacemos sincrónico (después pasamos a celery o similar)
+    extraer_y_trocear_pdf(file_content, manual.id)
 
     return jsonify({
         "message": "archivo recibido, procesando...",
