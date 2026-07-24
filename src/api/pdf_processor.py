@@ -1,13 +1,17 @@
 import PyPDF2
 from io import BytesIO
+from sentence_transformers import SentenceTransformer
 from api.models import db, Manual, ManualChunk
 
-# aqui metemos las librerias para embeddings despues
-# de momento solo trocamos el pdf
+# cargo el modelo de embeddings (se descarga la primera vez)
+# este modelo crea vectores en español e inglés muy buenos
+embeddings_model = SentenceTransformer('all-MiniLM-L6-v2')
+
 
 def extraer_y_trocear_pdf(pdf_content, manual_id):
     """
     extrae texto del pdf, lo trocea en fragmentos
+    genera embeddings para cada fragmento
     y guarda todo en la bd
     
     pdf_content: el contenido binario del pdf
@@ -39,15 +43,15 @@ def extraer_y_trocear_pdf(pdf_content, manual_id):
         manual = Manual.query.get(manual_id)
         
         for chunk_index, chunk_texto in enumerate(chunks):
-            # TODO: generar embedding aqui
-            # por ahora solo guardamos el texto
+            # genero el embedding (vector 384 dimensiones con all-MiniLM-L6-v2)
+            embedding = embeddings_model.encode(chunk_texto).tolist()
             
             manual_chunk = ManualChunk(
                 manual_id=manual_id,
                 content=chunk_texto,
-                page_number=None,  # lo calculamos despues si hace falta
+                page_number=None,
                 chunk_index=chunk_index,
-                embedding=None  # TODO: embedding
+                embedding=embedding  # ahora sí guardamos el embedding
             )
             
             db.session.add(manual_chunk)
@@ -57,7 +61,7 @@ def extraer_y_trocear_pdf(pdf_content, manual_id):
         manual.total_chunks = len(chunks)
         db.session.commit()
         
-        print(f"manual {manual_id} procesado: {len(chunks)} chunks creados")
+        print(f"manual {manual_id} procesado: {len(chunks)} chunks con embeddings creados")
         
     except Exception as err:
         # si algo falla, marco el manual como error
@@ -65,3 +69,4 @@ def extraer_y_trocear_pdf(pdf_content, manual_id):
         manual.status = "error"
         db.session.commit()
         print(f"error procesando manual {manual_id}: {err}")
+        

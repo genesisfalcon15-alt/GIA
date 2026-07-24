@@ -54,8 +54,10 @@ class Project(db.Model):
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
     user: Mapped[User] = relationship(back_populates="projects")
 
-    # titulo del montaje (ej: sofá söderhamn, armario pax...)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    # titulo de la conversacion, nullable porque se genera automaticamente
+    # cuando el usuario manda el primer mensaje, groq genera el titulo
+    # hasta entonces queda en null
+    title: Mapped[str] = mapped_column(String(255), nullable=True)
 
     # en progreso, completado, pausado
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="en_progreso")
@@ -70,13 +72,27 @@ class Project(db.Model):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # serialize pensado para el sidebar de conversaciones
+    # el frontend nunca ve la palabra "project", solo ve "conversacion"
     def serialize(self):
+        # saco el ultimo mensaje para mostrarlo en el sidebar
+        ultimo = None
+        if self.chat_history:
+            ultimo_entry = max(self.chat_history, key=lambda m: m.created_at)
+            ultimo = ultimo_entry.gia_response
+
+        # miro si tiene algun manual subido
+        tiene_manual = len(self.manuals) > 0
+
         return {
             "id": self.id,
-            "user_id": self.user_id,
-            "title": self.title,
+            "title": self.title or "Nueva conversación",
             "status": self.status,
             "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+            "last_message": ultimo,
+            "has_manual": tiene_manual,
+            "message_count": len(self.chat_history),
         }
 
 
@@ -126,7 +142,7 @@ class ManualChunk(db.Model):
     # el texto del fragmento (puede ser largo, por eso Text)
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # vector de búsqueda, 1536 numeros que representan el significado del fragmento
+    # vector de busqueda, numeros que representan el significado del fragmento
     embedding: Mapped[list[float]] = mapped_column(JSON, nullable=True)
 
     # de que pagina viene (si el pdf tiene paginas)

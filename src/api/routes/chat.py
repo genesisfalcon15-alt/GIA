@@ -1,127 +1,117 @@
-import os
-import requests
 from flask import request, jsonify, Blueprint
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from api.models import db, Project, Manual, ManualChunk, ChatHistory
+from api.models import db, Project, Manual, ChatHistory
 from api.utils import APIException
+from api.groq_service import send_message as groq_send
+from api.knowledge_service import buscar_chunks_relevantes, construir_contexto
 
 # creo el blueprint de chat
 chat_bp = Blueprint('chat', __name__)
 
-# system prompt de GIA
-GIA_SYSTEM_PROMPT = """Eres GIA, una asistente experta en montajes de muebles e instalaciones.
-Tu objetivo es ayudar a los usuarios respondiendo SOLO con la información del manual que te proporcionan.
-Si la pregunta no se puede responder con el manual, di claramente que no tienes esa información.
-Sé conciso, práctico y amigable. Responde en español."""
 
-
-@chat_bp.route('/<int:project_id>/message', methods=['POST'])
+@chat_bp.route('', methods=['POST'])
 @jwt_required()
-def send_message(project_id):
+def send_message():
     """
-    el usuario pregunta algo sobre su manual
-    buscamos los chunks relevantes y los mandamos a groq
+    endpoint principal de gia. el usuario manda un mensaje y gia responde.
+    si conversation_id es null, creamos una conversacion nueva automaticamente.
+    si hay manual, buscamos chunks relevantes antes de llamar a groq.
     """
-    # saco el user_id del token
+    # saco el user_id del token, nunca del body (seguridad)
     user_id = int(get_jwt_identity())
-    
-    # verifico que el proyecto existe y pertenece al usuario
-    project = Project.query.get(project_id)
-    if not project:
-        raise APIException("proyecto no encontrado", status_code=404)
-    if project.user_id != user_id:
-        raise APIException("no tienes permiso para este proyecto", status_code=403)
-    
-    # obtengo la pregunta del usuario
+
+    # obtengo el cuerpo de la peticion
     body = request.get_json(silent=True)
     if not body or not body.get("message"):
-        raise APIException("necesito una pregunta", status_code=400)
-    
+        raise APIException("necesito un mensaje", status_code=400)
+
     user_message = body.get("message")
-    
-    # busco el manual del proyecto (asumimos que tiene uno)
-    manual = Manual.query.filter_by(project_id=project_id).first()
-    if not manual:
-        raise APIException("este proyecto no tiene manual", status_code=404)
-    
-    if manual.status != "listo":
-        raise APIException(f"el manual está en estado {manual.status}", status_code=400)
-    
-    # TODO: aqui irá la búsqueda por embeddings (similitud semántica)
-    # por ahora, buscamos chunks que contengan palabras de la pregunta
-    palabras_clave = user_message.lower().split()
-    
-    chunks_relevantes = []
-    todos_los_chunks = ManualChunk.query.filter_by(manual_id=manual.id).all()
-    
-    for chunk in todos_los_chunks:
-        # contar cuántas palabras clave hay en el chunk
-        coincidencias = sum(1 for palabra in palabras_clave if palabra in chunk.content.lower())
-        if coincidencias > 0:
-            chunks_relevantes.append((chunk, coincidencias))
-    
-    # ordeno por relevancia (más coincidencias primero) y cojo los top 5
-    chunks_relevantes.sort(key=lambda x: x[1], reverse=True)
-    chunks_top = [chunk for chunk, _ in chunks_relevantes[:5]]
-    
-    # si no hay chunks relevantes, devuelvo error
-    if not chunks_top:
-        chunks_top = todos_los_chunks[:3]  # si no hay nada, devuelvo los primeros 3
-    
-    # armo el contexto: junta todos los chunks relevantes
-    contexto = "\n\n---\n\n".join([chunk.content for chunk in chunks_top])
-    
-    # llamo a groq con el contexto y la pregunta
-    try:
-        groq_response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "mixtral-8x7b-32768",  # o el modelo que prefieras
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": GIA_SYSTEM_PROMPT
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Aquí está el manual:\n\n{contexto}\n\nLa pregunta es: {user_message}"
-                    }
-                ],
-                "temperature": 0.7,
-                "max_tokens": 500
-            }
+    conversation_id = body.get("conversation_id")
+
+    # --- OBTENER O CREAR LA CONVERSACION ---
+
+    if conversation_id is None:
+        # el usuario empieza una conversacion nueva
+        # creamos el project automaticamente, sin titulo por ahora
+        # groq generara el titulo con la primera respuesta
+        project = Project(
+            user_id=user_id,
+            title=None,
+            status="en_progreso"
         )
-        
-        groq_data = groq_response.json()
-        
-        if groq_response.status_code != 200:
-            raise APIException(f"error en groq: {groq_data}", status_code=500)
-        
-        gia_response = groq_data["choices"][0]["message"]["content"]
-        tokens_used = groq_data.get("usage", {}).get("total_tokens", 0)
-        
-    except Exception as err:
-        raise APIException(f"error llamando a groq: {str(err)}", status_code=500)
-    
-    # guardo la conversación en la bd
+        db.session.add(project)
+        db.session.flush()  # flush para obtener el id sin hacer commit todavia
+        es_primer_mensaje = True
+    else:
+        # el usuario continua una conversacion existente
+        project = Project.query.get(conversation_id)
+        if not project:
+            raise APIException("conversacion no encontrada", status_code=404)
+        if project.user_id != user_id:
+            raise APIException("no tienes permiso para esta conversacion", status_code=403)
+        es_primer_mensaje = len(project.chat_history) == 0
+
+    # --- CONSTRUIR CONTEXTO DEL MANUAL (si existe) ---
+
+    contexto = None
+    manual = Manual.query.filter_by(project_id=project.id, status="listo").first()
+
+    if manual:
+        # busco los fragmentos del manual mas relevantes para esta pregunta
+        chunks = buscar_chunks_relevantes(user_message, manual.id)
+        contexto = construir_contexto(chunks)
+
+    # --- CONSTRUIR HISTORIAL PARA GROQ ---
+
+    # mando los ultimos 20 mensajes para que groq tenga contexto de la conversacion
+    historial = []
+    ultimos_mensajes = ChatHistory.query.filter_by(
+        project_id=project.id
+    ).order_by(ChatHistory.created_at.asc()).limit(20).all()
+
+    for entrada in ultimos_mensajes:
+        historial.append({"role": "user", "content": entrada.user_message})
+        historial.append({"role": "assistant", "content": entrada.gia_response})
+
+    # añado el mensaje actual del usuario al historial
+    historial.append({"role": "user", "content": user_message})
+
+    # --- LLAMAR A GROQ ---
+
+    resultado = groq_send(
+        messages=historial,
+        context=contexto,
+        is_first_message=es_primer_mensaje
+    )
+
+    gia_response = resultado["response"]
+    tokens_used = resultado["tokens_used"]
+
+    # si era el primer mensaje, guardo el titulo que genero groq
+    if es_primer_mensaje and resultado.get("title"):
+        project.title = resultado["title"]
+
+    # --- GUARDAR EN BD ---
+
     chat_entry = ChatHistory(
-        project_id=project_id,
+        project_id=project.id,
         user_message=user_message,
         gia_response=gia_response,
-        chunks_used=[chunk.id for chunk in chunks_top],
+        chunks_used=[],
         tokens_used=tokens_used
     )
-    
+
     db.session.add(chat_entry)
     db.session.commit()
-    
+
+    # --- RESPUESTA AL FRONTEND ---
+
     return jsonify({
-        "user_message": user_message,
-        "gia_response": gia_response,
-        "chunks_used": len(chunks_top),
-        "tokens_used": tokens_used
+        "conversation_id": project.id,
+        "message": {
+            "role": "assistant",
+            "content": gia_response,
+            "created_at": chat_entry.created_at.isoformat()
+        },
+        "title": project.title
     }), 200
