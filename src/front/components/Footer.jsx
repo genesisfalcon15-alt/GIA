@@ -30,6 +30,12 @@ export const Footer = () => (
 								</Link>
 							</li>
 							<li>
+								{/* link al about desde el footer */}
+								<Link to="/about" className="text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire transition-colors">
+									Acerca de GIA
+								</Link>
+							</li>
+							<li>
 								<Link to="/register" className="text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire transition-colors">
 									Crear cuenta
 								</Link>
@@ -61,6 +67,7 @@ export const Footer = () => (
 					</div>
 				</div>
 			</div>
+
 			<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-8 border-t border-douche dark:border-noche-borde">
 				<p className="text-xs text-gris-piedra">
 					© {new Date().getFullYear()} GIA · Todos los derechos reservados
