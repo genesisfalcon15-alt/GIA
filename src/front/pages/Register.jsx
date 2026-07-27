@@ -31,7 +31,8 @@ export const Register = () => {
 
         try {
             const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            const response = await fetch(backendUrl + "/api/register", {
+            // la ruta cambio a /api/auth/register cuando reorganizamos las rutas
+            const response = await fetch(backendUrl + "/api/auth/register", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email, password, role })
