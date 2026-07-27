@@ -149,11 +149,10 @@ export const Chat = () => {
         const archivo = e.target.files[0];
         if (!archivo) return;
 
-        // si no hay conversacion activa, creo una nueva primero
         let projectId = conversacionActiva;
 
         if (!projectId) {
-            // creo conversacion nueva con un mensaje inicial
+            // creo conversacion nueva con mensaje inicial
             setMensajes(prev => [...prev, {
                 role: "user",
                 content: `He subido el manual: ${archivo.name}`,
@@ -189,13 +188,11 @@ export const Chat = () => {
             }
         }
 
-        // subo el pdf
+        // subo el pdf y muestro mensaje de que estamos analizando
         setSubiendoPDF(true);
-
-        // muestro mensaje de que estamos subiendo
         setMensajes(prev => [...prev, {
             role: "assistant",
-            content: `Recibido. Estoy analizando el manual "${archivo.name}". Dame un momento...`,
+            content: `Ya tengo el manual "${archivo.name}". Estoy revisando las instrucciones para identificar las piezas, la tornillería, las herramientas necesarias y el orden de montaje.`,
             created_at: new Date().toISOString()
         }]);
 
@@ -212,13 +209,11 @@ export const Chat = () => {
                 }
             );
 
-            const data = await response.json();
-
             if (response.ok) {
-                // aviso al usuario que el manual esta listo
+                // el manual esta listo, invito al usuario a empezar
                 setMensajes(prev => [...prev, {
                     role: "assistant",
-                    content: `Manual analizado. Ya conozco "${archivo.name}". Puedes hacerme cualquier pregunta sobre él.`,
+                    content: `El manual ya está listo. A partir de ahora utilizaré su contenido para guiarte durante todo el montaje. ¿Por dónde empezamos?`,
                     created_at: new Date().toISOString()
                 }]);
             } else {
@@ -235,7 +230,6 @@ export const Chat = () => {
             console.error("error subiendo pdf:", err);
         } finally {
             setSubiendoPDF(false);
-            // limpio el input de archivo para poder subir el mismo archivo otra vez
             if (fileInputRef.current) fileInputRef.current.value = "";
         }
     };
@@ -263,7 +257,7 @@ export const Chat = () => {
                 />
             )}
 
-
+            {/* SIDEBAR */}
             <aside className={`
                 fixed md:relative z-30 md:z-auto
                 h-full w-72 flex-shrink-0
@@ -285,6 +279,7 @@ export const Chat = () => {
                     </button>
                 </div>
 
+                {/* lista de conversaciones */}
                 <div className="flex-1 overflow-y-auto p-2">
                     {cargandoHistorial ? (
                         <p className="text-xs text-gris-piedra px-2 py-4 text-center">Cargando...</p>
@@ -318,6 +313,7 @@ export const Chat = () => {
                                     )}
                                 </button>
 
+                                {/* boton borrar visible en hover */}
                                 <button
                                     onClick={(e) => borrarConversacion(e, conv.id)}
                                     disabled={borrandoId === conv.id}
@@ -350,9 +346,10 @@ export const Chat = () => {
                 </div>
             </aside>
 
-
+            {/* CHAT CENTRAL */}
             <main className="flex-1 flex flex-col min-w-0 h-full">
 
+                {/* barra superior solo en movil */}
                 <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-douche dark:border-noche-borde bg-white dark:bg-noche-suave">
                     <button
                         onClick={() => setSidebarAbierto(true)}
@@ -365,6 +362,7 @@ export const Chat = () => {
                     <LogoGia size={28} />
                 </div>
 
+                {/* area de mensajes */}
                 <div className="flex-1 overflow-y-auto px-4 py-6">
                     {mensajes.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto">
@@ -396,6 +394,7 @@ export const Chat = () => {
                                 </div>
                             ))}
 
+                            {/* puntitos de gia pensando */}
                             {cargando && (
                                 <div className="flex justify-start">
                                     <div className="bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde px-4 py-3 rounded-2xl rounded-bl-sm">
@@ -417,7 +416,7 @@ export const Chat = () => {
                 <div className="px-4 py-4 border-t border-douche dark:border-noche-borde bg-white dark:bg-noche-suave">
                     <div className="max-w-2xl mx-auto flex gap-2 items-end">
 
-
+                        {/* input oculto para el archivo */}
                         <input
                             ref={fileInputRef}
                             type="file"
@@ -426,7 +425,7 @@ export const Chat = () => {
                             className="hidden"
                         />
 
-                        {/* boton de subir pdf con texto para que el usuario entienda que puede subir un manual */}
+                        {/* boton de subir pdf con texto */}
                         <button
                             onClick={() => fileInputRef.current?.click()}
                             disabled={subiendoPDF || cargando}
@@ -452,7 +451,7 @@ export const Chat = () => {
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder="Escribe un mensaje..."
+                            placeholder="Escribe un mensaje o sube el manual PDF..."
                             rows={1}
                             className="flex-1 resize-none px-4 py-3 rounded-xl border border-douche dark:border-noche-borde bg-ivoire dark:bg-noche text-deep-ocean dark:text-ivoire placeholder:text-gris-piedra text-sm outline-none focus:border-ocean-vivo transition max-h-32 overflow-y-auto"
                         />
