@@ -5,6 +5,7 @@ import { LogoGia } from "../components/LogoGia";
 export const Chat = () => {
     const navigate = useNavigate();
     const bottomRef = useRef(null);
+    const fileInputRef = useRef(null);
 
     const [sidebarAbierto, setSidebarAbierto] = useState(false);
     const [conversaciones, setConversaciones] = useState([]);
@@ -13,8 +14,9 @@ export const Chat = () => {
     const [input, setInput] = useState("");
     const [cargando, setCargando] = useState(false);
     const [cargandoHistorial, setCargandoHistorial] = useState(true);
-    // id de la conversacion que se esta borrando (para mostrar estado)
     const [borrandoId, setBorrandoId] = useState(null);
+    // estado de la subida del pdf
+    const [subiendoPDF, setSubiendoPDF] = useState(false);
 
     const token = localStorage.getItem("token");
 
@@ -65,9 +67,7 @@ export const Chat = () => {
     };
 
     const borrarConversacion = async (e, id) => {
-        // evito que se abra la conversacion al pulsar borrar
         e.stopPropagation();
-
         if (!window.confirm("¿Seguro que quieres borrar esta conversación? No se puede deshacer.")) return;
 
         setBorrandoId(id);
@@ -79,14 +79,10 @@ export const Chat = () => {
                     headers: { "Authorization": `Bearer ${token}` }
                 }
             );
-
-            // si borro la conversacion activa, limpio el chat
             if (conversacionActiva === id) {
                 setConversacionActiva(null);
                 setMensajes([]);
             }
-
-            // actualizo la lista del sidebar
             cargarConversaciones();
         } catch (err) {
             console.error("error borrando conversacion:", err);
@@ -149,6 +145,101 @@ export const Chat = () => {
         }
     };
 
+    const subirPDF = async (e) => {
+        const archivo = e.target.files[0];
+        if (!archivo) return;
+
+        // si no hay conversacion activa, creo una nueva primero
+        let projectId = conversacionActiva;
+
+        if (!projectId) {
+            // creo conversacion nueva con un mensaje inicial
+            setMensajes(prev => [...prev, {
+                role: "user",
+                content: `He subido el manual: ${archivo.name}`,
+                created_at: new Date().toISOString()
+            }]);
+            setCargando(true);
+
+            try {
+                const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/chat`, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${token}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        conversation_id: null,
+                        message: `He subido el manual: ${archivo.name}`
+                    })
+                });
+                const data = await res.json();
+                projectId = data.conversation_id;
+                setConversacionActiva(projectId);
+
+                if (data.message && data.message.role) {
+                    setMensajes(prev => [...prev, data.message]);
+                }
+            } catch (err) {
+                console.error("error creando conversacion:", err);
+                setCargando(false);
+                return;
+            } finally {
+                setCargando(false);
+            }
+        }
+
+        // subo el pdf
+        setSubiendoPDF(true);
+
+        // muestro mensaje de que estamos subiendo
+        setMensajes(prev => [...prev, {
+            role: "assistant",
+            content: `Recibido. Estoy analizando el manual "${archivo.name}". Dame un momento...`,
+            created_at: new Date().toISOString()
+        }]);
+
+        try {
+            const formData = new FormData();
+            formData.append("file", archivo);
+
+            const response = await fetch(
+                `${import.meta.env.VITE_BACKEND_URL}/api/manuals/${projectId}/upload`,
+                {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}` },
+                    body: formData
+                }
+            );
+
+            const data = await response.json();
+
+            if (response.ok) {
+                // aviso al usuario que el manual esta listo
+                setMensajes(prev => [...prev, {
+                    role: "assistant",
+                    content: `Manual analizado. Ya conozco "${archivo.name}". Puedes hacerme cualquier pregunta sobre él.`,
+                    created_at: new Date().toISOString()
+                }]);
+            } else {
+                setMensajes(prev => [...prev, {
+                    role: "assistant",
+                    content: `Hubo un problema al procesar el manual. Intenta subir el archivo de nuevo.`,
+                    created_at: new Date().toISOString()
+                }]);
+            }
+
+            cargarConversaciones();
+
+        } catch (err) {
+            console.error("error subiendo pdf:", err);
+        } finally {
+            setSubiendoPDF(false);
+            // limpio el input de archivo para poder subir el mismo archivo otra vez
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+    };
+
     const handleKeyDown = (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -172,7 +263,7 @@ export const Chat = () => {
                 />
             )}
 
-            {/* SIDEBAR */}
+
             <aside className={`
                 fixed md:relative z-30 md:z-auto
                 h-full w-72 flex-shrink-0
@@ -194,7 +285,6 @@ export const Chat = () => {
                     </button>
                 </div>
 
-                {/* lista de conversaciones */}
                 <div className="flex-1 overflow-y-auto p-2">
                     {cargandoHistorial ? (
                         <p className="text-xs text-gris-piedra px-2 py-4 text-center">Cargando...</p>
@@ -214,7 +304,6 @@ export const Chat = () => {
                                     }
                                 `}
                             >
-                                {/* boton principal de la conversacion */}
                                 <button
                                     onClick={() => abrirConversacion(conv.id)}
                                     className="flex-1 text-left px-3 py-2.5 text-sm min-w-0"
@@ -229,7 +318,6 @@ export const Chat = () => {
                                     )}
                                 </button>
 
-                                {/* boton de borrar, solo visible en hover */}
                                 <button
                                     onClick={(e) => borrarConversacion(e, conv.id)}
                                     disabled={borrandoId === conv.id}
@@ -237,7 +325,6 @@ export const Chat = () => {
                                     title="Borrar conversación"
                                 >
                                     {borrandoId === conv.id ? (
-                                        // spinner mientras borra
                                         <div className="w-4 h-4 border-2 border-gris-piedra border-t-transparent rounded-full animate-spin" />
                                     ) : (
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -263,7 +350,7 @@ export const Chat = () => {
                 </div>
             </aside>
 
-            {/* CHAT CENTRAL */}
+
             <main className="flex-1 flex flex-col min-w-0 h-full">
 
                 <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-douche dark:border-noche-borde bg-white dark:bg-noche-suave">
@@ -326,8 +413,41 @@ export const Chat = () => {
                     )}
                 </div>
 
+                {/* input del chat con boton de pdf */}
                 <div className="px-4 py-4 border-t border-douche dark:border-noche-borde bg-white dark:bg-noche-suave">
                     <div className="max-w-2xl mx-auto flex gap-2 items-end">
+
+
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".pdf"
+                            onChange={subirPDF}
+                            className="hidden"
+                        />
+
+                        {/* boton de subir pdf con texto para que el usuario entienda que puede subir un manual */}
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={subiendoPDF || cargando}
+                            className="flex-shrink-0 flex items-center gap-2 px-3 py-3 rounded-xl border border-douche dark:border-noche-borde text-gris-piedra hover:text-ocean-vivo hover:border-ocean-vivo transition disabled:opacity-40 whitespace-nowrap"
+                            title="Subir manual PDF"
+                        >
+                            {subiendoPDF ? (
+                                <div className="w-4 h-4 border-2 border-gris-piedra border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                    <line x1="12" y1="18" x2="12" y2="12" />
+                                    <line x1="9" y1="15" x2="15" y2="15" />
+                                </svg>
+                            )}
+                            <span className="text-sm hidden sm:block">
+                                {subiendoPDF ? "Procesando..." : "Manual PDF"}
+                            </span>
+                        </button>
+
                         <textarea
                             value={input}
                             onChange={(e) => setInput(e.target.value)}

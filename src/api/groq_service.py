@@ -184,7 +184,7 @@ def send_message(messages, context=None, is_first_message=False):
         system_content += """
 
 IMPORTANTE: Como este es el primer mensaje de la conversación, además de responder al usuario, debes generar un título corto y descriptivo para esta conversación (máximo 5 palabras).
-Responde SIEMPRE en este formato JSON exacto:
+Responde SIEMPRE en este formato JSON exacto, sin texto adicional antes ni después:
 {
   "title": "título corto aquí",
   "response": "tu respuesta al usuario aquí"
@@ -225,13 +225,33 @@ Responde SIEMPRE en este formato JSON exacto:
     # si era el primer mensaje, groq devuelve json con title y response
     if is_first_message:
         try:
-            parsed = json.loads(raw_content)
+            # a veces groq envuelve el json en ```json ... ``` o añade texto antes
+            texto_limpio = raw_content.strip()
+
+            # quito bloques de codigo markdown si los hay
+            if "```" in texto_limpio:
+                partes = texto_limpio.split("```")
+                for parte in partes:
+                    parte = parte.strip()
+                    if parte.startswith("json"):
+                        parte = parte[4:].strip()
+                    if parte.startswith("{"):
+                        texto_limpio = parte
+                        break
+
+            # busco el primer { y el ultimo } por si hay texto extra
+            inicio = texto_limpio.find("{")
+            fin = texto_limpio.rfind("}") + 1
+            if inicio != -1 and fin > inicio:
+                texto_limpio = texto_limpio[inicio:fin]
+
+            parsed = json.loads(texto_limpio)
             return {
                 "response": parsed.get("response", raw_content),
                 "title": parsed.get("title", "Nueva conversación"),
                 "tokens_used": tokens_used
             }
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, IndexError):
             # si groq no devolvio json bien formado, usamos el texto tal cual
             return {
                 "response": raw_content,

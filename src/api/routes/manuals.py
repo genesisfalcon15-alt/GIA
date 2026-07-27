@@ -62,6 +62,8 @@ def upload_manual(project_id):
         )
         file_url = upload_response['secure_url']
     except Exception as err:
+        import traceback
+        traceback.print_exc()
         raise APIException(f"error subiendo a cloudinary: {str(err)}", status_code=500)
 
     # creo el registro en la bd: el manual está en estado "procesando"
