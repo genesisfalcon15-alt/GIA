@@ -9,6 +9,7 @@ import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { Chat } from "./pages/Chat";
+import { About } from "./pages/About";
 
 export const router = createBrowserRouter(
   createRoutesFromElements(
@@ -17,6 +18,7 @@ export const router = createBrowserRouter(
       <Route path="chat" element={<Chat />} />
       <Route path="login" element={<Login />} />
       <Route path="register" element={<Register />} />
+      <Route path="about" element={<About />} />
     </Route>
   )
 );
