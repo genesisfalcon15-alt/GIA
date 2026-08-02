@@ -14,7 +14,6 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
 
-# creo el blueprint de manuales
 manuals_bp = Blueprint('manuals', __name__)
 
 
@@ -23,34 +22,40 @@ manuals_bp = Blueprint('manuals', __name__)
 def upload_manual(project_id):
     """
     sube un pdf a un proyecto
-    el usuario debe ser propietario del proyecto
+    si ya existe un manual lo reemplaza
     """
-    # saco el user_id del token, nunca del body (anti-IDOR)
     user_id = int(get_jwt_identity())
 
-    # verifico que el proyecto existe y que el usuario es propietario
+    # verifico que el proyecto existe y pertenece al usuario
     project = Project.query.get(project_id)
     if not project:
         raise APIException("proyecto no encontrado", status_code=404)
     if project.user_id != user_id:
         raise APIException("no tienes permiso para este proyecto", status_code=403)
 
-    # verifico que me enviaron un archivo
+    # verifico que llegó un archivo
     if 'file' not in request.files:
-        raise APIException("no me llegó ningun archivo", status_code=400)
+        raise APIException("no me llegó ningún archivo", status_code=400)
 
     file = request.files['file']
     if file.filename == '':
         raise APIException("el archivo está vacío", status_code=400)
 
-    # verifico que el archivo sea un pdf (extension)
     if not file.filename.lower().endswith('.pdf'):
         raise APIException("solo se aceptan archivos pdf", status_code=400)
 
-    # verifico que es un pdf de verdad (magic bytes: los pdfs empiezan por %PDF)
+    # verifico magic bytes (los pdfs reales empiezan por %PDF)
     file_content = file.read()
     if not file_content.startswith(b'%PDF'):
         raise APIException("el archivo no es un pdf válido", status_code=400)
+
+    # si ya existe un manual para este proyecto lo elimino
+    # un proyecto solo tiene un manual activo a la vez
+    manual_existente = Manual.query.filter_by(project_id=project_id).first()
+    if manual_existente:
+        db.session.delete(manual_existente)
+        db.session.commit()
+        print(f"=== MANUAL: eliminado manual anterior del proyecto {project_id} ===")
 
     # subo a cloudinary
     try:
@@ -66,7 +71,7 @@ def upload_manual(project_id):
         traceback.print_exc()
         raise APIException(f"error subiendo a cloudinary: {str(err)}", status_code=500)
 
-    # creo el registro en la bd: el manual está en estado "procesando"
+    # creo el nuevo manual en estado procesando
     manual = Manual(
         project_id=project_id,
         file_url=file_url,
@@ -74,12 +79,10 @@ def upload_manual(project_id):
         status="procesando",
         total_chunks=0
     )
-
     db.session.add(manual)
     db.session.commit()
 
-    # TODO: lanzar el job asincrónico que procesa el pdf
-    # por ahora lo hacemos sincrónico (después pasamos a celery o similar)
+    # proceso el pdf: extrae texto, genera chunks, embeddings y metadata
     extraer_y_trocear_pdf(file_content, manual.id)
 
     return jsonify({

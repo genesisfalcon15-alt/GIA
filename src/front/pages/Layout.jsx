@@ -1,9 +1,9 @@
 import { Outlet } from "react-router-dom";
 import ScrollToTop from "../components/ScrollToTop";
 import { Navbar } from "../components/Navbar";
-import { Footer } from "../components/Footer";
 
-// min-h-screen + flex-col hace que el footer se pegue abajo del todo
+// sin footer — gia es una herramienta, no una web corporativa
+// la info legal vive en configuracion
 export const Layout = () => {
     return (
         <ScrollToTop>
@@ -12,7 +12,6 @@ export const Layout = () => {
                 <main className="flex-1">
                     <Outlet />
                 </main>
-                <Footer />
             </div>
         </ScrollToTop>
     );

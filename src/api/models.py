@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import String, Boolean, Integer, Text, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
+from typing import Optional
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
@@ -29,11 +30,9 @@ class User(db.Model):
     # relacion con Project: un user tiene muchos montajes
     projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
-    # guardo la contraseña encriptada, nunca tal cual
     def set_password(self, password):
         self.password = generate_password_hash(password)
 
-    # compruebo la contraseña en el login
     def check_password(self, password):
         return check_password_hash(self.password, password)
 
@@ -43,45 +42,38 @@ class User(db.Model):
             "email": self.email,
             "role": self.role,
             "is_pro": self.is_pro,
-            # el password no se saca nunca
         }
 
 
 class Project(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    # quien es dueno del montaje, aqui se verifica si puede acceder o no
+    # quien es dueno del montaje
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
     user: Mapped[User] = relationship(back_populates="projects")
 
-    # titulo de la conversacion, nullable porque se genera automaticamente
-    # cuando el usuario manda el primer mensaje, groq genera el titulo
-    # hasta entonces queda en null
+    # titulo nullable porque lo genera groq en el primer mensaje
     title: Mapped[str] = mapped_column(String(255), nullable=True)
 
     # en progreso, completado, pausado
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="en_progreso")
 
-    # relacion con Manual: cada montaje puede tener su manual
+    # relacion con Manual
     manuals: Mapped[list["Manual"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
-    # relacion con ChatHistory: todas las conversaciones de este montaje
+    # relacion con ChatHistory
     chat_history: Mapped[list["ChatHistory"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
     # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # serialize pensado para el sidebar de conversaciones
-    # el frontend nunca ve la palabra "project", solo ve "conversacion"
     def serialize(self):
-        # saco el ultimo mensaje para mostrarlo en el sidebar
         ultimo = None
         if self.chat_history:
             ultimo_entry = max(self.chat_history, key=lambda m: m.created_at)
             ultimo = ultimo_entry.gia_response
 
-        # miro si tiene algun manual subido
         tiene_manual = len(self.manuals) > 0
 
         return {
@@ -99,7 +91,7 @@ class Project(db.Model):
 class Manual(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    # cadena de seguridad: user -> project -> manual, imposible acceder sin permiso
+    # cadena de seguridad: user -> project -> manual
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
     project: Mapped[Project] = relationship(back_populates="manuals")
 
@@ -109,15 +101,17 @@ class Manual(db.Model):
     # nombre original del archivo para mostrar al usuario
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    # procesando, listo, error, o error_no_digital si es solo imagenes
+    # procesando, listo, error
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="procesando")
 
-    # cuantos fragmentos generamos del manual (para la ui)
+    # cuantos fragmentos generamos del manual
     total_chunks: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
 
-    # relacion con ManualChunk: los trozos trocados del manual
+    # relacion con ManualChunk
     chunks: Mapped[list["ManualChunk"]] = relationship(back_populates="manual", cascade="all, delete-orphan")
 
+    # relacion con ManualMetadata (uno a uno)
+    manual_metadata: Mapped[Optional["ManualMetadata"]] = relationship(back_populates="manual", cascade="all, delete-orphan", uselist=False)
     # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
@@ -139,16 +133,16 @@ class ManualChunk(db.Model):
     manual_id: Mapped[int] = mapped_column(ForeignKey("manual.id"), nullable=False)
     manual: Mapped[Manual] = relationship(back_populates="chunks")
 
-    # el texto del fragmento (puede ser largo, por eso Text)
+    # el texto del fragmento
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # vector de busqueda, numeros que representan el significado del fragmento
+    # vector de busqueda semántica
     embedding: Mapped[list[float]] = mapped_column(JSON, nullable=True)
 
-    # de que pagina viene (si el pdf tiene paginas)
+    # de que pagina viene
     page_number: Mapped[int] = mapped_column(Integer(), nullable=True)
 
-    # en que orden va el fragmento dentro del manual (paso 1, paso 2, etc)
+    # orden dentro del manual
     chunk_index: Mapped[int] = mapped_column(Integer(), nullable=False)
 
     # timestamps
@@ -161,6 +155,50 @@ class ManualChunk(db.Model):
             "content": self.content,
             "page_number": self.page_number,
             "chunk_index": self.chunk_index,
+        }
+
+
+class ManualMetadata(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # relacion uno a uno con el manual
+    manual_id: Mapped[int] = mapped_column(ForeignKey("manual.id"), nullable=False, unique=True)
+    manual: Mapped["Manual"] = relationship(back_populates="manual_metadata")
+
+    # herramientas necesarias extraidas del manual
+    tools_required: Mapped[list] = mapped_column(JSON, nullable=True)
+
+    # lista de piezas del mueble
+    parts_list: Mapped[list] = mapped_column(JSON, nullable=True)
+
+    # tornilleria y elementos de fijacion
+    hardware_list: Mapped[list] = mapped_column(JSON, nullable=True)
+
+    # numero total de pasos del montaje
+    total_steps: Mapped[int] = mapped_column(Integer(), nullable=True)
+
+    # advertencias de seguridad importantes
+    safety_warnings: Mapped[list] = mapped_column(JSON, nullable=True)
+
+    # tiempo estimado de montaje (ej: "45-60 minutos")
+    estimated_time: Mapped[str] = mapped_column(String(100), nullable=True)
+
+    # nivel de dificultad: facil, medio, dificil
+    difficulty: Mapped[str] = mapped_column(String(30), nullable=True)
+
+    # timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "manual_id": self.manual_id,
+            "tools_required": self.tools_required,
+            "parts_list": self.parts_list,
+            "hardware_list": self.hardware_list,
+            "total_steps": self.total_steps,
+            "safety_warnings": self.safety_warnings,
+            "estimated_time": self.estimated_time,
+            "difficulty": self.difficulty,
         }
 
 
@@ -177,10 +215,10 @@ class ChatHistory(db.Model):
     # lo que contesto gia
     gia_response: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # ids de los chunks que uso para responder, asi el frontend los resalta
+    # ids de los chunks que uso para responder
     chunks_used: Mapped[list[int]] = mapped_column(JSON, nullable=True)
 
-    # cuantos tokens gaste en esta llamada (para auditar costos)
+    # cuantos tokens gaste en esta llamada
     tokens_used: Mapped[int] = mapped_column(Integer(), nullable=True)
 
     # timestamps

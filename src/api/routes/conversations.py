@@ -14,10 +14,8 @@ def get_conversations():
     devuelve todas las conversaciones del usuario autenticado
     ordenadas por la mas reciente primero, para el sidebar
     """
-    # saco el user_id del token, nunca del body
     user_id = int(get_jwt_identity())
 
-    # busco todos los proyectos del usuario ordenados por updated_at
     conversaciones = Project.query.filter_by(
         user_id=user_id
     ).order_by(Project.updated_at.desc()).all()
@@ -33,19 +31,15 @@ def get_conversations():
 def get_conversation(conversation_id):
     """
     devuelve una conversacion completa con todos sus mensajes
-    el frontend la usa para reconstruir el chat cuando el usuario
-    hace click en una conversacion del sidebar
     """
     user_id = int(get_jwt_identity())
 
-    # busco la conversacion y verifico que pertenece al usuario
     conversacion = Project.query.get(conversation_id)
     if not conversacion:
         raise APIException("conversacion no encontrada", status_code=404)
     if conversacion.user_id != user_id:
         raise APIException("no tienes permiso para esta conversacion", status_code=403)
 
-    # construyo los mensajes en orden cronologico
     mensajes = []
     for entrada in conversacion.chat_history:
         mensajes.append({
@@ -59,7 +53,6 @@ def get_conversation(conversation_id):
             "created_at": entrada.created_at.isoformat()
         })
 
-    # busco el manual si existe
     manual = None
     if conversacion.manuals:
         m = conversacion.manuals[0]
@@ -85,19 +78,15 @@ def get_conversation(conversation_id):
 def delete_conversation(conversation_id):
     """
     borra una conversacion completa con todos sus mensajes y manual
-    solo el propietario puede borrarla
-    el cascade en el modelo borra automaticamente mensajes y chunks
     """
     user_id = int(get_jwt_identity())
 
-    # verifico que existe y pertenece al usuario
     conversacion = Project.query.get(conversation_id)
     if not conversacion:
         raise APIException("conversacion no encontrada", status_code=404)
     if conversacion.user_id != user_id:
         raise APIException("no tienes permiso para borrar esta conversacion", status_code=403)
 
-    # borro la conversacion, el cascade elimina mensajes y manuales automaticamente
     db.session.delete(conversacion)
     db.session.commit()
 

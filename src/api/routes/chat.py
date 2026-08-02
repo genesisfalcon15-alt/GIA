@@ -1,11 +1,15 @@
 from flask import request, jsonify, Blueprint
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from api.models import db, Project, Manual, ChatHistory
+from api.models import db, Project, ChatHistory
 from api.utils import APIException
 from api.groq_service import send_message as groq_send
-from api.knowledge_service import buscar_chunks_relevantes, construir_contexto
+from api.conversation_context_service import (
+    construir_contexto_conversacion,
+    construir_info_manual_para_groq
+)
 
-# creo el blueprint de chat
+# orquestador del chat, no contiene logica de negocio
+# toda la logica conversacional vive en conversation_context_service
 chat_bp = Blueprint('chat', __name__)
 
 
@@ -13,14 +17,12 @@ chat_bp = Blueprint('chat', __name__)
 @jwt_required()
 def send_message():
     """
-    endpoint principal de gia. el usuario manda un mensaje y gia responde.
-    si conversation_id es null, creamos una conversacion nueva automaticamente.
-    si hay manual, buscamos chunks relevantes antes de llamar a groq.
+    endpoint principal de gia.
+    orquesta el flujo: obtiene contexto → llama a groq → guarda respuesta
+    no construye contexto ni ejecuta logica conversacional
     """
-    # saco el user_id del token, nunca del body (seguridad)
     user_id = int(get_jwt_identity())
 
-    # obtengo el cuerpo de la peticion
     body = request.get_json(silent=True)
     if not body or not body.get("message"):
         raise APIException("necesito un mensaje", status_code=400)
@@ -28,22 +30,17 @@ def send_message():
     user_message = body.get("message")
     conversation_id = body.get("conversation_id")
 
-    # --- OBTENER O CREAR LA CONVERSACION ---
-
+    # obtengo o creo la conversacion
     if conversation_id is None:
-        # el usuario empieza una conversacion nueva
-        # creamos el project automaticamente, sin titulo por ahora
-        # groq generara el titulo con la primera respuesta
         project = Project(
             user_id=user_id,
             title=None,
             status="en_progreso"
         )
         db.session.add(project)
-        db.session.flush()  # flush para obtener el id sin hacer commit todavia
+        db.session.flush()
         es_primer_mensaje = True
     else:
-        # el usuario continua una conversacion existente
         project = Project.query.get(conversation_id)
         if not project:
             raise APIException("conversacion no encontrada", status_code=404)
@@ -51,19 +48,7 @@ def send_message():
             raise APIException("no tienes permiso para esta conversacion", status_code=403)
         es_primer_mensaje = len(project.chat_history) == 0
 
-    # --- CONSTRUIR CONTEXTO DEL MANUAL (si existe) ---
-
-    contexto = None
-    manual = Manual.query.filter_by(project_id=project.id, status="listo").first()
-
-    if manual:
-        # busco los fragmentos del manual mas relevantes para esta pregunta
-        chunks = buscar_chunks_relevantes(user_message, manual.id)
-        contexto = construir_contexto(chunks)
-
-    # --- CONSTRUIR HISTORIAL PARA GROQ ---
-
-    # mando los ultimos 20 mensajes para que groq tenga contexto de la conversacion
+    # construyo el historial para groq
     historial = []
     ultimos_mensajes = ChatHistory.query.filter_by(
         project_id=project.id
@@ -73,25 +58,33 @@ def send_message():
         historial.append({"role": "user", "content": entrada.user_message})
         historial.append({"role": "assistant", "content": entrada.gia_response})
 
-    # añado el mensaje actual del usuario al historial
     historial.append({"role": "user", "content": user_message})
 
-    # --- LLAMAR A GROQ ---
+    # el conversation_context_service construye todo el contexto
+    # resuelve referencias, decide si usar rag y prepara la info del proyecto
+    contexto = construir_contexto_conversacion(
+        project_id=project.id,
+        user_message=user_message,
+        historial_groq=historial
+    )
 
+    # info del proyecto y manual que groq recibe siempre,
+    # independientemente de si el rag encontro fragmentos
+    info_manual = construir_info_manual_para_groq(contexto)
+
+    # llamo a groq con todas las capas de contexto
     resultado = groq_send(
         messages=historial,
-        context=contexto,
+        context=contexto["contexto_rag"],
+        manual_info=info_manual,
         is_first_message=es_primer_mensaje
     )
 
     gia_response = resultado["response"]
     tokens_used = resultado["tokens_used"]
 
-    # si era el primer mensaje, guardo el titulo que genero groq
     if es_primer_mensaje and resultado.get("title"):
         project.title = resultado["title"]
-
-    # --- GUARDAR EN BD ---
 
     chat_entry = ChatHistory(
         project_id=project.id,
@@ -103,8 +96,6 @@ def send_message():
 
     db.session.add(chat_entry)
     db.session.commit()
-
-    # --- RESPUESTA AL FRONTEND ---
 
     return jsonify({
         "conversation_id": project.id,
