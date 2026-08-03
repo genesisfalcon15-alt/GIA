@@ -55,14 +55,28 @@ class Project(db.Model):
     # titulo nullable porque lo genera groq en el primer mensaje
     title: Mapped[str] = mapped_column(String(255), nullable=True)
 
-    # en progreso, completado, pausado
+    # en_progreso, completado, pausado, cancelado
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="en_progreso")
+
+    # montaje, instalacion, restauracion, reparacion, libre
+    category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    # porcentaje de progreso del proyecto
+    progress: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
+
+    # minutos invertidos en el proyecto
+    time_invested: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
 
     # relacion con Manual
     manuals: Mapped[list["Manual"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
     # relacion con ChatHistory
     chat_history: Mapped[list["ChatHistory"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+
+    # relacion con las nuevas tablas del proyecto
+    timeline: Mapped[list["ProjectTimeline"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    notes: Mapped[list["ProjectNote"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    photos: Mapped[list["ProjectPhoto"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
     # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
@@ -80,6 +94,9 @@ class Project(db.Model):
             "id": self.id,
             "title": self.title or "Nueva conversación",
             "status": self.status,
+            "category": self.category,
+            "progress": self.progress,
+            "time_invested": self.time_invested,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "last_message": ultimo,
@@ -112,6 +129,7 @@ class Manual(db.Model):
 
     # relacion con ManualMetadata (uno a uno)
     manual_metadata: Mapped[Optional["ManualMetadata"]] = relationship(back_populates="manual", cascade="all, delete-orphan", uselist=False)
+
     # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
@@ -180,7 +198,7 @@ class ManualMetadata(db.Model):
     # advertencias de seguridad importantes
     safety_warnings: Mapped[list] = mapped_column(JSON, nullable=True)
 
-    # tiempo estimado de montaje (ej: "45-60 minutos")
+    # tiempo estimado de montaje
     estimated_time: Mapped[str] = mapped_column(String(100), nullable=True)
 
     # nivel de dificultad: facil, medio, dificil
@@ -232,5 +250,79 @@ class ChatHistory(db.Model):
             "gia_response": self.gia_response,
             "chunks_used": self.chunks_used,
             "tokens_used": self.tokens_used,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class ProjectTimeline(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # a que montaje pertenece este evento
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    project: Mapped["Project"] = relationship(back_populates="timeline")
+
+    # descripcion del evento ocurrido
+    evento: Mapped[str] = mapped_column(String(300), nullable=False)
+
+    # info, incidencia, hito, completado
+    tipo: Mapped[str] = mapped_column(String(50), nullable=False, default="info")
+
+    # timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "evento": self.evento,
+            "tipo": self.tipo,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class ProjectNote(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # a que montaje pertenece esta nota
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    project: Mapped["Project"] = relationship(back_populates="notes")
+
+    # contenido de la nota personal del usuario
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "content": self.content,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class ProjectPhoto(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # a que montaje pertenece esta foto
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    project: Mapped["Project"] = relationship(back_populates="photos")
+
+    # url en cloudinary
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    # descripcion opcional de la foto
+    caption: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+
+    # timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "url": self.url,
+            "caption": self.caption,
             "created_at": self.created_at.isoformat(),
         }

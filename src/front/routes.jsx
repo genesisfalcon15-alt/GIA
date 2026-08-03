@@ -4,12 +4,14 @@ import {
   createRoutesFromElements,
   Route,
 } from "react-router-dom";
+import { NuevoProyecto } from "./pages/NuevoProyecto";
 import { Layout } from "./pages/Layout";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { Chat } from "./pages/Chat";
 import { About } from "./pages/About";
+import { Montajes } from "./pages/Montajes";
 
 export const router = createBrowserRouter(
   createRoutesFromElements(
@@ -19,6 +21,8 @@ export const router = createBrowserRouter(
       <Route path="login" element={<Login />} />
       <Route path="register" element={<Register />} />
       <Route path="about" element={<About />} />
+      <Route path="montajes" element={<Montajes />} />
+      <Route path="nuevo-proyecto" element={<NuevoProyecto />} />
     </Route>
   )
 );

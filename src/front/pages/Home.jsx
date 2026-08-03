@@ -1,11 +1,46 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+	FileText, Camera, Hammer, Wrench, Sofa,
+	Plus, ChevronRight, FolderOpen, Settings, User
+} from "lucide-react";
 
 const ACCIONES = [
-	{ id: "manual", label: "Analizar un manual y construir un mueble nuevo", contexto: "Quiero analizar un manual de montaje" },
-	{ id: "instalar", label: "Instalar un electrodoméstico", contexto: "Quiero instalar un producto en casa" },
-	{ id: "reparar", label: "Reparar un electrodoméstico", contexto: "Quiero reparar un electrodoméstico" },
-	{ id: "foto", label: "Analizar una fotografía para darle una segunda oportunidad a tu objeto", contexto: "Quiero analizar una fotografía de un mueble o pieza de segunda mano" },
+	{
+		id: "manual",
+		label: "Analizar un manual",
+		descripcion: "Interpreta un PDF paso a paso",
+		icono: FileText,
+		contexto: "Quiero analizar un manual de montaje"
+	},
+	{
+		id: "foto",
+		label: "Subir una imagen",
+		descripcion: "Diagnostica mediante imágenes",
+		icono: Camera,
+		contexto: "Quiero analizar una fotografía de un mueble o pieza"
+	},
+	{
+		id: "instalar",
+		label: "Instalar un producto",
+		descripcion: "TV, lámparas, ventiladores y más",
+		icono: Hammer,
+		contexto: "Quiero instalar un producto en casa"
+	},
+	{
+		id: "reparar",
+		label: "Reparar un electrodoméstico",
+		descripcion: "Diagnóstico y guía de reparación",
+		icono: Wrench,
+		contexto: "Quiero reparar un electrodoméstico"
+	},
+	{
+		id: "restaurar",
+		label: "Restaurar un mueble de segunda mano",
+		descripcion: "Recupera muebles dañados o antiguos",
+		icono: Sofa,
+		contexto: "Quiero restaurar un mueble de segunda mano"
+	},
 ];
 
 const fechaHoy = () => new Date().toLocaleDateString("es-ES", {
@@ -42,8 +77,8 @@ export const Home = () => {
 			.finally(() => setCargando(false));
 	}, []);
 
-	const iniciarAccion = (contexto) => {
-		sessionStorage.setItem("gia_contexto_inicial", contexto);
+	const iniciarAccion = (accion) => {
+		sessionStorage.setItem("gia_contexto_inicial", accion.contexto);
 		navigate("/chat");
 	};
 
@@ -55,115 +90,163 @@ export const Home = () => {
 		<div className="bg-ivoire dark:bg-noche">
 			<div className="max-w-2xl mx-auto px-8 pt-10 pb-16">
 
-				{/* cabecera — "Centro de trabajo" lleva al chat */}
-				<div className="flex items-baseline justify-between mb-10">
-					<div>
-						<button
-							onClick={() => navigate("/chat")}
-							className="text-[9px] font-semibold tracking-[0.16em] uppercase text-deep-ocean dark:text-sky mb-1 hover:opacity-70 transition-opacity block"
-						>
-							Centro de trabajo
-						</button>
-						<h1 className="text-xl font-medium tracking-tight text-noyer dark:text-mantequilla">
-							¿Qué hacemos hoy?
-						</h1>
-					</div>
-					<p className="text-[9px] tracking-[0.12em] uppercase text-gris-piedra/50">
+				{/* cabecera centrada */}
+				<div className="mb-8 text-center">
+					<p className="text-[9px] font-semibold tracking-[0.20em] uppercase text-gris-piedra mb-3">
 						{fechaHoy()}
 					</p>
-				</div>
-
-				<div className="border-t border-douche dark:border-noche-borde mb-8" />
-
-				{/* proyecto activo */}
-				{!cargando && proyectoActivo && (
-					<>
-						<div className="mb-8">
-							<p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-deep-ocean dark:text-sky mb-4">
-								Proyecto activo
-							</p>
-							<button
-								onClick={() => navigate(`/chat?conversation=${proyectoActivo.id}`)}
-								className="w-full text-left group"
-							>
-								<div className="flex items-start justify-between">
-									<div>
-										<p className="text-lg font-medium tracking-tight text-noyer dark:text-mantequilla mb-1.5">
-											{proyectoActivo.title || "Proyecto sin título"}
-										</p>
-										<p className="text-sm text-deep-ocean dark:text-sky mb-1">
-											{proyectoActivo.has_manual ? "Manual analizado" : "Sin manual"}
-											{proyectoActivo.message_count > 0 && ` · ${proyectoActivo.message_count} mensajes`}
-										</p>
-										<p className="text-xs text-deep-ocean/60 dark:text-sky/60">
-											{tiempoRelativo(proyectoActivo.updated_at)}
-										</p>
-									</div>
-									<span className="text-deep-ocean/30 dark:text-sky/30 group-hover:text-deep-ocean dark:group-hover:text-sky transition-colors mt-1">
-										→
-									</span>
-								</div>
-								<p className="text-xs text-deep-ocean dark:text-sky mt-4 group-hover:opacity-70 transition-opacity">
-									Continuar proyecto →
-								</p>
-							</button>
-						</div>
-						<div className="border-t border-douche dark:border-noche-borde mb-8" />
-					</>
-				)}
-
-				{/* acciones */}
-				<div className="mb-10">
-					<p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-deep-ocean dark:text-sky mb-4">
-						Iniciar proyecto
+					<h1 className="text-3xl sm:text-4xl font-medium tracking-tight text-noyer dark:text-mantequilla mb-2">
+						¿Qué hacemos hoy?
+					</h1>
+					<p className="text-sm text-gris-piedra">
+						Empieza un nuevo proyecto o continúa uno existente.
 					</p>
-					<div>
-						{ACCIONES.map((accion, index) => (
-							<button
-								key={accion.id}
-								onClick={() => iniciarAccion(accion.contexto)}
-								className={`w-full flex items-center justify-between py-3 text-left group ${index !== ACCIONES.length - 1
-									? "border-b border-douche dark:border-noche-borde"
-									: ""
-									}`}
-							>
-								<span className="text-sm text-noyer dark:text-mantequilla group-hover:text-deep-ocean dark:group-hover:text-sky transition-colors">
-									{accion.label}
-								</span>
-								<span className="text-deep-ocean/30 dark:text-sky/30 group-hover:text-deep-ocean dark:group-hover:text-sky transition-colors">
-									→
-								</span>
-							</button>
-						))}
-
-						<button
-							onClick={() => navigate("/chat")}
-							className="w-full flex items-center justify-between py-3 text-left group border-t border-douche dark:border-noche-borde"
-						>
-							<span className="text-sm text-noyer/60 dark:text-mantequilla/60 group-hover:text-noyer dark:group-hover:text-mantequilla transition-colors">
-								Nuevo proyecto libre
-							</span>
-							<span className="text-deep-ocean/30 dark:text-sky/30 group-hover:text-deep-ocean dark:group-hover:text-sky transition-colors">
-								+
-							</span>
-						</button>
-					</div>
 				</div>
 
 				<div className="border-t border-douche dark:border-noche-borde mb-6" />
 
+				{/* proyecto activo */}
+				{!cargando && proyectoActivo && (
+					<>
+						<div className="mb-6">
+							<p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-deep-ocean dark:text-sky mb-3">
+								Proyecto activo
+							</p>
+							<button
+								onClick={() => navigate(`/chat?conversation=${proyectoActivo.id}`)}
+								className="w-full text-left group flex items-start justify-between"
+							>
+								<div>
+									<p className="text-base font-medium tracking-tight text-noyer dark:text-mantequilla mb-1">
+										{proyectoActivo.title || "Proyecto sin título"}
+									</p>
+									<p className="text-sm text-deep-ocean dark:text-sky">
+										{proyectoActivo.has_manual ? "Manual analizado" : "Sin manual"}
+										{proyectoActivo.message_count > 0 && ` · ${proyectoActivo.message_count} mensajes`}
+									</p>
+									<p className="text-xs text-deep-ocean/50 dark:text-sky/50 mt-0.5">
+										{tiempoRelativo(proyectoActivo.updated_at)}
+									</p>
+								</div>
+								<ChevronRight size={16} strokeWidth={1.5} className="text-gris-piedra/30 group-hover:text-gris-piedra transition-colors mt-0.5 flex-shrink-0" />
+							</button>
+							<button
+								onClick={() => navigate(`/chat?conversation=${proyectoActivo.id}`)}
+								className="mt-3 text-xs text-deep-ocean dark:text-sky hover:opacity-70 transition-opacity"
+							>
+								Continuar proyecto →
+							</button>
+						</div>
+						<div className="border-t border-douche dark:border-noche-borde mb-6" />
+					</>
+				)}
+
+				{/* nuevo proyecto  */}
+
+				<div className="flex justify-center mb-2">
+					<button
+						onClick={() => navigate("/nuevo-proyecto")}
+						style={{ width: "calc(50% - 4px)", minHeight: "140px" }}
+						className="flex flex-col items-center justify-center p-7 rounded-xl bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde hover:border-deep-ocean/20 dark:hover:border-sky/20 hover:bg-douche/10 dark:hover:bg-noche-borde transition-all group text-center"
+					>
+						<svg
+							width="28" height="28" viewBox="0 0 24 24" fill="none"
+							stroke="currentColor" strokeWidth="1"
+							className="text-noyer dark:text-mantequilla group-hover:text-deep-ocean dark:group-hover:text-sky transition-colors mb-3"
+						>
+							<rect x="3" y="3" width="18" height="18" rx="2" />
+							<path d="M12 8v8M8 12h8" />
+						</svg>
+						<p className="text-lg font-medium text-noyer dark:text-mantequilla mb-1">
+							Nuevo proyecto
+						</p>
+						<p className="text-[11px] text-gris-piedra">
+							Empieza desde cero
+						</p>
+					</button>
+				</div>
+
+				<div className="mb-8">
+					<p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-3">
+						Acciones rápidas
+					</p>
+
+					{/* fila 1 */}
+					<div className="grid grid-cols-2 gap-2 mb-2">
+						{ACCIONES.slice(0, 2).map((accion) => {
+							const Icono = accion.icono;
+							return (
+								<button
+									key={accion.id}
+									onClick={() => iniciarAccion(accion)}
+									className="flex flex-col items-start p-5 rounded-xl bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde hover:border-deep-ocean/20 dark:hover:border-sky/20 hover:bg-douche/10 dark:hover:bg-noche-borde transition-all group text-left"
+								>
+									<Icono size={32} strokeWidth={1} className="text-noyer dark:text-mantequilla group-hover:text-deep-ocean dark:group-hover:text-sky transition-colors mb-4" />
+									<p className="text-sm font-medium text-noyer dark:text-mantequilla leading-tight mb-1">
+										{accion.label}
+									</p>
+									<p className="text-[11px] text-gris-piedra leading-snug">
+										{accion.descripcion}
+									</p>
+								</button>
+							);
+						})}
+					</div>
+
+					{/* fila 2 */}
+					<div className="grid grid-cols-2 gap-2 mb-2">
+						{ACCIONES.slice(2, 4).map((accion) => {
+							const Icono = accion.icono;
+							return (
+								<button
+									key={accion.id}
+									onClick={() => iniciarAccion(accion)}
+									className="flex flex-col items-start p-5 rounded-xl bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde hover:border-deep-ocean/20 dark:hover:border-sky/20 hover:bg-douche/10 dark:hover:bg-noche-borde transition-all group text-left"
+								>
+									<Icono size={32} strokeWidth={1} className="text-noyer dark:text-mantequilla group-hover:text-deep-ocean dark:group-hover:text-sky transition-colors mb-4" />
+									<p className="text-sm font-medium text-noyer dark:text-mantequilla leading-tight mb-1">
+										{accion.label}
+									</p>
+									<p className="text-[11px] text-gris-piedra leading-snug">
+										{accion.descripcion}
+									</p>
+								</button>
+							);
+						})}
+					</div>
+
+					{/* fila 3 — última centrada del mismo tamaño */}
+					<div className="flex justify-center">
+						<button
+							onClick={() => iniciarAccion(ACCIONES[4])}
+							className="w-[calc(50%-4px)] flex flex-col items-start p-5 rounded-xl bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde hover:border-deep-ocean/20 dark:hover:border-sky/20 hover:bg-douche/10 dark:hover:bg-noche-borde transition-all group text-left"
+						>
+							<Sofa size={32} strokeWidth={1} className="text-noyer dark:text-mantequilla group-hover:text-deep-ocean dark:group-hover:text-sky transition-colors mb-4" />
+							<p className="text-sm font-medium text-noyer dark:text-mantequilla leading-tight mb-1">
+								{ACCIONES[4].label}
+							</p>
+							<p className="text-[11px] text-gris-piedra leading-snug">
+								{ACCIONES[4].descripcion}
+							</p>
+						</button>
+					</div>
+				</div>
+
+				<div className="border-t border-douche dark:border-noche-borde mb-5" />
+
 				{/* accesos rápidos */}
 				<div className="flex gap-6">
 					{[
-						{ label: "Mis montajes", ruta: "/montajes" },
-						{ label: "Configuración", ruta: "/configuracion" },
-						{ label: "Perfil", ruta: "/perfil" },
-					].map(({ label, ruta }) => (
+						{ label: "Mis montajes", ruta: "/montajes", icono: FolderOpen },
+						{ label: "Configuración", ruta: "/configuracion", icono: Settings },
+						{ label: "Perfil", ruta: "/perfil", icono: User },
+					].map(({ label, ruta, icono: Icono }) => (
 						<button
 							key={label}
 							onClick={() => navigate(ruta)}
-							className="text-xs text-deep-ocean dark:text-sky opacity-60 hover:opacity-100 transition-opacity"
+							className="flex items-center gap-1.5 text-xs text-deep-ocean dark:text-sky opacity-60 hover:opacity-100 transition-opacity"
 						>
+							<Icono size={12} strokeWidth={1.5} />
 							{label}
 						</button>
 					))}

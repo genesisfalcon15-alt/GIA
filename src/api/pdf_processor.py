@@ -4,10 +4,16 @@ import json
 import requests
 import os
 from io import BytesIO
-from sentence_transformers import SentenceTransformer
 from api.models import db, Manual, ManualChunk, ManualMetadata
 
-embeddings_model = SentenceTransformer('all-MiniLM-L6-v2')
+# carga lazy para que flask arranque aunque torch/numpy estén rotos
+try:
+    from sentence_transformers import SentenceTransformer
+    embeddings_model = SentenceTransformer('all-MiniLM-L6-v2')
+    print("=== EMBEDDINGS: modelo cargado correctamente ===")
+except Exception as e:
+    embeddings_model = None
+    print(f"=== EMBEDDINGS: SentenceTransformer no disponible — {e} ===")
 
 
 def extraer_metadata_con_groq(texto_completo):
@@ -116,9 +122,9 @@ def extraer_y_trocear_pdf(pdf_content, manual_id):
             chunk_texto = " ".join(palabras[i:i + tamanio_chunk])
             chunks.append(chunk_texto)
 
-        # genero embeddings y añado chunks a la sesión
+        # genero embeddings — si el modelo no está disponible guardo embedding vacío
         for chunk_index, chunk_texto in enumerate(chunks):
-            embedding = embeddings_model.encode(chunk_texto).tolist()
+            embedding = embeddings_model.encode(chunk_texto).tolist() if embeddings_model else []
             db.session.add(ManualChunk(
                 manual_id=manual_id,
                 content=chunk_texto,
