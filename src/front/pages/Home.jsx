@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	FileText, Camera, Hammer, Wrench, Sofa,
-	Plus, ChevronRight, FolderOpen, Settings, User
+	ChevronRight
 } from "lucide-react";
 
 const ACCIONES = [
@@ -105,7 +105,7 @@ export const Home = () => {
 
 				<div className="border-t border-douche dark:border-noche-borde mb-6" />
 
-				{/* proyecto activo */}
+				{/* proyecto activo — solo aparece si existe */}
 				{!cargando && proyectoActivo && (
 					<>
 						<div className="mb-6">
@@ -141,8 +141,7 @@ export const Home = () => {
 					</>
 				)}
 
-				{/* nuevo proyecto  */}
-
+				{/* nuevo proyecto — centrado, más grande que las acciones */}
 				<div className="flex justify-center mb-2">
 					<button
 						onClick={() => navigate("/nuevo-proyecto")}
@@ -166,6 +165,7 @@ export const Home = () => {
 					</button>
 				</div>
 
+				{/* acciones rápidas — 2+2+1 centrada */}
 				<div className="mb-8">
 					<p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-3">
 						Acciones rápidas
@@ -215,11 +215,12 @@ export const Home = () => {
 						})}
 					</div>
 
-					{/* fila 3 — última centrada del mismo tamaño */}
+					{/* fila 3 — última centrada */}
 					<div className="flex justify-center">
 						<button
 							onClick={() => iniciarAccion(ACCIONES[4])}
-							className="w-[calc(50%-4px)] flex flex-col items-start p-5 rounded-xl bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde hover:border-deep-ocean/20 dark:hover:border-sky/20 hover:bg-douche/10 dark:hover:bg-noche-borde transition-all group text-left"
+							style={{ width: "calc(50% - 4px)" }}
+							className="flex flex-col items-start p-5 rounded-xl bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde hover:border-deep-ocean/20 dark:hover:border-sky/20 hover:bg-douche/10 dark:hover:bg-noche-borde transition-all group text-left"
 						>
 							<Sofa size={32} strokeWidth={1} className="text-noyer dark:text-mantequilla group-hover:text-deep-ocean dark:group-hover:text-sky transition-colors mb-4" />
 							<p className="text-sm font-medium text-noyer dark:text-mantequilla leading-tight mb-1">
@@ -230,26 +231,6 @@ export const Home = () => {
 							</p>
 						</button>
 					</div>
-				</div>
-
-				<div className="border-t border-douche dark:border-noche-borde mb-5" />
-
-				{/* accesos rápidos */}
-				<div className="flex gap-6">
-					{[
-						{ label: "Mis montajes", ruta: "/montajes", icono: FolderOpen },
-						{ label: "Configuración", ruta: "/configuracion", icono: Settings },
-						{ label: "Perfil", ruta: "/perfil", icono: User },
-					].map(({ label, ruta, icono: Icono }) => (
-						<button
-							key={label}
-							onClick={() => navigate(ruta)}
-							className="flex items-center gap-1.5 text-xs text-deep-ocean dark:text-sky opacity-60 hover:opacity-100 transition-opacity"
-						>
-							<Icono size={12} strokeWidth={1.5} />
-							{label}
-						</button>
-					))}
 				</div>
 
 			</div>

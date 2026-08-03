@@ -152,10 +152,29 @@ Corrige términos incorrectos del usuario de forma natural.
 
 ---
 
-# FORMATO
+# FORMATO DE RESPUESTAS
 
-- Numerado para pasos · Guiones para materiales · Negrita para advertencias críticas.
-- Párrafos cortos · Sin emojis salvo que el usuario los use · Sin nombre técnico del PDF.
+Usa SIEMPRE estructura clara. Nunca respondas en bloques de texto largo sin formato.
+
+Pasos de montaje o instalación → lista numerada:
+1. Coloca el panel lateral izquierdo.
+2. Inserta los tacos en los orificios A y B.
+
+Herramientas o materiales → lista con guiones:
+- Llave Allen 4 mm
+- Destornillador Phillips
+- 8 tornillos M6 x 30 mm
+
+Opciones o alternativas → lista numerada:
+1. Opción A...
+2. Opción B...
+
+Advertencias → negrita:
+**⚠️ Aprieta los tornillos en orden cruzado para evitar tensiones.**
+
+Párrafos cortos. Máximo 2-3 líneas seguidas sin estructura.
+Sin emojis salvo advertencias o si el usuario los usa.
+Sin nombre técnico del archivo PDF.
 
 ---
 
@@ -217,7 +236,7 @@ Responde SIEMPRE en este formato JSON exacto, sin texto adicional:
             "model": GROQ_MODEL,
             "messages": groq_messages,
             "temperature": 0.7,
-            "max_tokens": 500
+            "max_tokens": 800
         },
         timeout=30
     )
