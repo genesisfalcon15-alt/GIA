@@ -20,35 +20,7 @@ export const Chat = () => {
 
     const token = localStorage.getItem("token");
 
-    useEffect(() => {
-        if (!token) {
-            navigate("/login");
-            return;
-        }
-        cargarConversaciones();
-
-        // si viene de la home con una conversacion especifica, la abre
-        const convId = searchParams.get("conversation");
-        if (convId) {
-            abrirConversacion(parseInt(convId));
-            return;
-        }
-
-        // si viene de la home con un contexto inicial, lo usa como primer mensaje
-        const contextoInicial = sessionStorage.getItem("gia_contexto_inicial");
-        if (contextoInicial) {
-            sessionStorage.removeItem("gia_contexto_inicial");
-            // pequeño delay para que el chat esté listo
-            setTimeout(() => {
-                setInput(contextoInicial);
-            }, 100);
-        }
-    }, []);
-
-    useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [mensajes]);
-
+    // carga el historial de conversaciones
     const cargarConversaciones = async () => {
         try {
             const response = await fetch(
@@ -64,6 +36,7 @@ export const Chat = () => {
         }
     };
 
+    // abre una conversacion existente
     const abrirConversacion = async (id) => {
         setSidebarAbierto(false);
         setConversacionActiva(id);
@@ -82,9 +55,10 @@ export const Chat = () => {
         }
     };
 
+    // borra una conversacion
     const borrarConversacion = async (e, id) => {
         e.stopPropagation();
-        if (!window.confirm("¿Seguro que quieres borrar esta conversación? No se puede deshacer.")) return;
+        if (!window.confirm("¿Seguro que quieres borrar esta conversación?")) return;
         setBorrandoId(id);
         try {
             await fetch(
@@ -106,6 +80,7 @@ export const Chat = () => {
         }
     };
 
+    // nueva conversacion vacía
     const nuevaConversacion = () => {
         setConversacionActiva(null);
         setMensajes([]);
@@ -113,6 +88,7 @@ export const Chat = () => {
         setSidebarAbierto(false);
     };
 
+    // envía un mensaje al backend
     const enviarMensaje = async () => {
         if (!input.trim() || cargando) return;
         const texto = input.trim();
@@ -141,7 +117,6 @@ export const Chat = () => {
                 }
             );
             const data = await response.json();
-
             if (data.message && data.message.role) {
                 setMensajes(prev => [...prev, data.message]);
             }
@@ -156,6 +131,7 @@ export const Chat = () => {
         }
     };
 
+    // sube un PDF al proyecto activo
     const subirPDF = async (e) => {
         const archivo = e.target.files[0];
         if (!archivo) return;
@@ -208,8 +184,6 @@ export const Chat = () => {
             const formData = new FormData();
             formData.append("file", archivo);
 
-            console.log("llamando a:", `${import.meta.env.VITE_BACKEND_URL}/api/manuals/${projectId}/upload`);
-
             const response = await fetch(
                 `${import.meta.env.VITE_BACKEND_URL}/api/manuals/${projectId}/upload`,
                 {
@@ -219,8 +193,6 @@ export const Chat = () => {
                 }
             );
 
-            console.log("respuesta del backend:", response.status);
-
             if (response.ok) {
                 setMensajes(prev => [...prev, {
                     role: "assistant",
@@ -228,8 +200,6 @@ export const Chat = () => {
                     created_at: new Date().toISOString()
                 }]);
             } else {
-                const errorData = await response.json();
-                console.error("error del backend:", errorData);
                 setMensajes(prev => [...prev, {
                     role: "assistant",
                     content: `No pude procesar el manual. Inténtalo de nuevo.`,
@@ -263,7 +233,6 @@ export const Chat = () => {
         navigate("/login");
     };
 
-    // formato de hora para mensajes
     const formatHora = (fechaStr) => {
         if (!fechaStr) return "";
         return new Date(fechaStr).toLocaleTimeString("es-ES", {
@@ -271,6 +240,76 @@ export const Chat = () => {
             minute: "2-digit"
         });
     };
+
+    // efecto principal — al montar el componente
+    useEffect(() => {
+        if (!token) {
+            navigate("/login");
+            return;
+        }
+
+        cargarConversaciones();
+
+        // si viene con una conversacion especifica la abre
+        const convId = searchParams.get("conversation");
+        if (convId) {
+            abrirConversacion(parseInt(convId));
+            return;
+        }
+
+        // si viene con contexto inicial lo envía automáticamente
+        const contextoInicial = sessionStorage.getItem("gia_contexto_inicial");
+        if (contextoInicial) {
+            sessionStorage.removeItem("gia_contexto_inicial");
+            setTimeout(async () => {
+                setMensajes([{
+                    role: "user",
+                    content: contextoInicial,
+                    created_at: new Date().toISOString()
+                }]);
+                setCargando(true);
+                try {
+                    const response = await fetch(
+                        `${import.meta.env.VITE_BACKEND_URL}/api/chat`,
+                        {
+                            method: "POST",
+                            headers: {
+                                "Authorization": `Bearer ${token}`,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                conversation_id: null,
+                                message: contextoInicial
+                            })
+                        }
+                    );
+                    const data = await response.json();
+                    if (data.message && data.message.role) {
+                        setMensajes(prev => [...prev, data.message]);
+                    }
+                    if (data.conversation_id) {
+                        setConversacionActiva(data.conversation_id);
+                    }
+                    // recarga sidebar con la nueva conversacion
+                    const res = await fetch(
+                        `${import.meta.env.VITE_BACKEND_URL}/api/conversations`,
+                        { headers: { "Authorization": `Bearer ${token}` } }
+                    );
+                    const d = await res.json();
+                    setConversaciones(d.items || []);
+                } catch (err) {
+                    console.error("error enviando contexto inicial:", err);
+                } finally {
+                    setCargando(false);
+                }
+            }, 500);
+        }
+    }, []);
+
+    // scroll al último mensaje
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [mensajes]);
 
     return (
         <div className="flex h-screen w-full overflow-hidden bg-ivoire dark:bg-noche">
@@ -293,7 +332,6 @@ export const Chat = () => {
                 transition-transform duration-300
                 ${sidebarAbierto ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
             `}>
-                {/* cabecera del sidebar */}
                 <div className="p-4 flex items-center justify-between">
                     <Link to="/" className="hover:opacity-70 transition">
                         <LogoGia size={28} />
@@ -309,7 +347,6 @@ export const Chat = () => {
                     </button>
                 </div>
 
-                {/* lista de conversaciones */}
                 <div className="flex-1 overflow-y-auto px-2 pb-2">
                     {cargandoHistorial ? (
                         <div className="px-3 py-8 text-center">
@@ -348,7 +385,6 @@ export const Chat = () => {
                                     onClick={(e) => borrarConversacion(e, conv.id)}
                                     disabled={borrandoId === conv.id}
                                     className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-2 mr-1 rounded text-gris-piedra hover:text-red-500 transition"
-                                    title="Borrar"
                                 >
                                     {borrandoId === conv.id ? (
                                         <div className="w-3 h-3 border border-gris-piedra border-t-transparent rounded-full animate-spin" />
@@ -365,7 +401,6 @@ export const Chat = () => {
                     )}
                 </div>
 
-                {/* pie del sidebar */}
                 <div className="p-4 border-t border-douche dark:border-noche-borde">
                     <button
                         onClick={cerrarSesion}
@@ -384,7 +419,6 @@ export const Chat = () => {
             {/* ÁREA PRINCIPAL */}
             <main className="flex-1 flex flex-col min-w-0 h-full">
 
-                {/* barra superior móvil */}
                 <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-douche dark:border-noche-borde bg-white dark:bg-noche-suave">
                     <button
                         onClick={() => setSidebarAbierto(true)}
@@ -397,10 +431,8 @@ export const Chat = () => {
                     <LogoGia size={24} />
                 </div>
 
-                {/* área de mensajes */}
                 <div className="flex-1 overflow-y-auto">
                     {mensajes.length === 0 ? (
-                        // estado vacío — invitación a empezar
                         <div className="h-full flex flex-col items-center justify-center px-6 text-center">
                             <LogoGia size={36} conTexto={false} />
                             <p className="text-sm text-gris-piedra mt-4 max-w-xs leading-relaxed">
@@ -429,7 +461,6 @@ export const Chat = () => {
                                 </div>
                             ))}
 
-                            {/* indicador de escritura */}
                             {cargando && (
                                 <div className="flex items-start">
                                     <div className="bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde px-4 py-3 rounded-2xl rounded-bl-sm">
@@ -447,12 +478,10 @@ export const Chat = () => {
                     )}
                 </div>
 
-                {/* input */}
                 <div className="border-t border-douche dark:border-noche-borde bg-white dark:bg-noche-suave px-4 py-3">
                     <div className="max-w-2xl mx-auto">
                         <div className="flex gap-2 items-end">
 
-                            {/* input oculto para archivo */}
                             <input
                                 ref={fileInputRef}
                                 type="file"
@@ -461,12 +490,10 @@ export const Chat = () => {
                                 className="hidden"
                             />
 
-                            {/* boton pdf */}
                             <button
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={subiendoPDF || cargando}
                                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-douche dark:border-noche-borde text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire hover:border-deep-ocean/30 transition disabled:opacity-40 text-xs font-medium whitespace-nowrap"
-                                title="Subir manual PDF"
                             >
                                 {subiendoPDF ? (
                                     <div className="w-3.5 h-3.5 border border-gris-piedra border-t-transparent rounded-full animate-spin" />
@@ -483,7 +510,6 @@ export const Chat = () => {
                                 </span>
                             </button>
 
-                            {/* campo de texto */}
                             <textarea
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
@@ -493,7 +519,6 @@ export const Chat = () => {
                                 className="flex-1 resize-none px-3.5 py-2.5 rounded-lg border border-douche dark:border-noche-borde bg-ivoire dark:bg-noche text-deep-ocean dark:text-ivoire placeholder:text-gris-piedra text-sm outline-none focus:border-deep-ocean/40 dark:focus:border-sky/40 transition max-h-32 overflow-y-auto"
                             />
 
-                            {/* boton enviar */}
                             <button
                                 onClick={enviarMensaje}
                                 disabled={!input.trim() || cargando}

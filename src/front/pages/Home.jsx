@@ -11,35 +11,35 @@ const ACCIONES = [
 		label: "Analizar un manual",
 		descripcion: "Interpreta un PDF paso a paso",
 		icono: FileText,
-		contexto: "Quiero analizar un manual de montaje"
+		contexto: "El usuario quiere analizar un manual de montaje. Pregúntale si ya tiene el PDF listo para subir o si necesita ayuda para encontrarlo. Una sola pregunta."
 	},
 	{
 		id: "foto",
 		label: "Subir una imagen",
 		descripcion: "Diagnostica mediante imágenes",
 		icono: Camera,
-		contexto: "Quiero analizar una fotografía de un mueble o pieza"
+		contexto: "El usuario quiere analizar una fotografía de un mueble o pieza. Dile que puede subir la foto usando el botón PDF (también acepta imágenes). Cuando la recibas, analízala sin esperar más instrucciones: identifica qué es, su estado, daños visibles, piezas faltantes y si se puede reparar."
 	},
 	{
 		id: "instalar",
 		label: "Instalar un producto",
 		descripcion: "TV, lámparas, ventiladores y más",
 		icono: Hammer,
-		contexto: "Quiero instalar un producto en casa"
+		contexto: "El usuario quiere instalar un producto en casa. Pregúntale únicamente qué quiere instalar: TV, lámpara, ventilador, estantería, espejo, cuadro u otro. Una sola pregunta, sin pedir manual todavía."
 	},
 	{
 		id: "reparar",
 		label: "Reparar un electrodoméstico",
 		descripcion: "Diagnóstico y guía de reparación",
 		icono: Wrench,
-		contexto: "Quiero reparar un electrodoméstico"
+		contexto: "El usuario quiere reparar un electrodoméstico. Pregúntale únicamente qué aparato quiere reparar: lavadora, lavavajillas, horno, nevera, microondas, cafetera, aspiradora u otro. Una sola pregunta."
 	},
 	{
 		id: "restaurar",
 		label: "Restaurar un mueble de segunda mano",
 		descripcion: "Recupera muebles dañados o antiguos",
 		icono: Sofa,
-		contexto: "Quiero restaurar un mueble de segunda mano"
+		contexto: "El usuario quiere restaurar un mueble de segunda mano. Pregúntale si tiene una fotografía del mueble. Si la tiene, pídele que la suba. Si no, pregúntale qué tipo de mueble es y qué estado tiene. Una sola pregunta."
 	},
 ];
 
@@ -105,7 +105,7 @@ export const Home = () => {
 
 				<div className="border-t border-douche dark:border-noche-borde mb-6" />
 
-				{/* proyecto activo — solo aparece si existe */}
+				{/* proyecto activo — solo si existe */}
 				{!cargando && proyectoActivo && (
 					<>
 						<div className="mb-6">
@@ -141,7 +141,7 @@ export const Home = () => {
 					</>
 				)}
 
-				{/* nuevo proyecto — centrado, más grande que las acciones */}
+				{/* nuevo proyecto — centrado, más grande */}
 				<div className="flex justify-center mb-2">
 					<button
 						onClick={() => navigate("/nuevo-proyecto")}
@@ -167,7 +167,7 @@ export const Home = () => {
 
 				{/* acciones rápidas — 2+2+1 centrada */}
 				<div className="mb-8">
-					<p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-3">
+					<p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-3 mt-6">
 						Acciones rápidas
 					</p>
 
