@@ -12,6 +12,9 @@ import { Register } from "./pages/Register";
 import { Chat } from "./pages/Chat";
 import { About } from "./pages/About";
 import { Montajes } from "./pages/Montajes";
+import { Instalar } from "./pages/Instalar";
+import { Reparar } from "./pages/Reparar";
+
 
 export const router = createBrowserRouter(
   createRoutesFromElements(
@@ -22,7 +25,10 @@ export const router = createBrowserRouter(
       <Route path="register" element={<Register />} />
       <Route path="about" element={<About />} />
       <Route path="montajes" element={<Montajes />} />
+      <Route path="proyecto/:id" element={<Proyecto />} />
       <Route path="nuevo-proyecto" element={<NuevoProyecto />} />
+      <Route path="instalar" element={<Instalar />} />
+      <Route path="reparar" element={<Reparar />} />
     </Route>
   )
 );

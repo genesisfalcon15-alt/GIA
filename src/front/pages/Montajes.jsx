@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const tiempoRelativo = (fechaStr) => {
+    if (!fechaStr) return "";
     const diff = Date.now() - new Date(fechaStr).getTime();
     const min = Math.floor(diff / 60000);
     const h = Math.floor(diff / 3600000);
@@ -33,8 +34,12 @@ export const Montajes = () => {
         <div className="min-h-screen bg-ivoire dark:bg-noche">
             <div className="max-w-xl mx-auto px-6 pt-14 pb-24">
 
+                {/* cabecera */}
                 <div className="mb-8">
-                    <h1 className="text-lg font-semibold text-deep-ocean dark:text-ivoire tracking-tight">
+                    <p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-1">
+                        Biblioteca personal
+                    </p>
+                    <h1 className="text-xl font-medium tracking-tight text-noyer dark:text-mantequilla">
                         Mis montajes
                     </h1>
                     <p className="text-sm text-gris-piedra mt-0.5">
@@ -42,38 +47,35 @@ export const Montajes = () => {
                     </p>
                 </div>
 
+                <div className="border-t border-douche dark:border-noche-borde mb-8" />
+
                 {cargando ? (
                     <div className="flex justify-center py-16">
                         <div className="w-4 h-4 border-2 border-douche border-t-gris-piedra rounded-full animate-spin" />
                     </div>
                 ) : conversaciones.length === 0 ? (
                     <div className="text-center py-16">
-                        <p className="text-sm text-gris-piedra">Aún no tienes montajes.</p>
+                        <p className="text-sm text-gris-piedra mb-4">Aún no tienes montajes.</p>
                         <button
-                            onClick={() => navigate("/chat")}
-                            className="mt-4 px-5 py-2.5 rounded-xl text-sm font-semibold bg-deep-ocean text-ivoire hover:bg-ocean-vivo transition dark:bg-sky dark:text-noche"
+                            onClick={() => navigate("/")}
+                            className="px-5 py-2.5 rounded-lg bg-deep-ocean dark:bg-sky text-ivoire dark:text-noche text-sm font-medium hover:opacity-90 transition"
                         >
                             Empezar ahora
                         </button>
                     </div>
                 ) : (
-                    <div className="rounded-xl border border-douche dark:border-noche-borde overflow-hidden">
-                        {conversaciones.map((conv, index) => (
+                    <div className="space-y-1">
+                        {conversaciones.map((conv) => (
                             <button
                                 key={conv.id}
-                                onClick={() => navigate(`/chat?conversation=${conv.id}`)}
-                                className={`
-                                    w-full flex items-center justify-between px-4 py-3.5 text-left
-                                    bg-white dark:bg-noche-suave
-                                    hover:bg-douche/30 dark:hover:bg-noche-borde transition-all group
-                                    ${index !== conversaciones.length - 1 ? "border-b border-douche dark:border-noche-borde" : ""}
-                                `}
+                                onClick={() => navigate(`/proyecto/${conv.id}`)}
+                                className="w-full flex items-center justify-between px-4 py-4 rounded-xl text-left bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde hover:border-deep-ocean/20 dark:hover:border-sky/20 hover:bg-douche/10 dark:hover:bg-noche-borde transition-all group"
                             >
                                 <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-medium text-deep-ocean dark:text-ivoire truncate">
+                                    <p className="text-sm font-medium text-noyer dark:text-mantequilla truncate mb-1">
                                         {conv.title || "Sin título"}
                                     </p>
-                                    <div className="flex items-center gap-2 mt-0.5">
+                                    <div className="flex items-center gap-3">
                                         {conv.has_manual && (
                                             <span className="text-[10px] font-medium text-noyer dark:text-mantequilla">
                                                 Manual
@@ -89,7 +91,7 @@ export const Montajes = () => {
                                         )}
                                     </div>
                                 </div>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="text-gris-piedra/30 group-hover:translate-x-0.5 transition-transform flex-shrink-0 ml-4">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="text-gris-piedra/30 group-hover:translate-x-0.5 group-hover:text-gris-piedra transition-all flex-shrink-0 ml-4">
                                     <path d="M5 12h14M12 5l7 7-7 7" />
                                 </svg>
                             </button>

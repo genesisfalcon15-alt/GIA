@@ -11,35 +11,40 @@ const ACCIONES = [
 		label: "Analizar un manual",
 		descripcion: "Interpreta un PDF paso a paso",
 		icono: FileText,
-		contexto: "El usuario quiere analizar un manual de montaje. Pregúntale si ya tiene el PDF listo para subir o si necesita ayuda para encontrarlo. Una sola pregunta."
+		tipo: "contexto",
+		contexto: "Quiero analizar un manual de montaje"
 	},
 	{
 		id: "foto",
 		label: "Subir una imagen",
 		descripcion: "Diagnostica mediante imágenes",
 		icono: Camera,
-		contexto: "El usuario quiere analizar una fotografía de un mueble o pieza. Dile que puede subir la foto usando el botón PDF (también acepta imágenes). Cuando la recibas, analízala sin esperar más instrucciones: identifica qué es, su estado, daños visibles, piezas faltantes y si se puede reparar."
+		tipo: "contexto",
+		contexto: "Quiero subir una foto para que la analices"
 	},
 	{
 		id: "instalar",
 		label: "Instalar un producto",
 		descripcion: "TV, lámparas, ventiladores y más",
 		icono: Hammer,
-		contexto: "El usuario quiere instalar un producto en casa. Pregúntale únicamente qué quiere instalar: TV, lámpara, ventilador, estantería, espejo, cuadro u otro. Una sola pregunta, sin pedir manual todavía."
+		tipo: "ruta",
+		ruta: "/instalar"
 	},
 	{
 		id: "reparar",
 		label: "Reparar un electrodoméstico",
 		descripcion: "Diagnóstico y guía de reparación",
 		icono: Wrench,
-		contexto: "El usuario quiere reparar un electrodoméstico. Pregúntale únicamente qué aparato quiere reparar: lavadora, lavavajillas, horno, nevera, microondas, cafetera, aspiradora u otro. Una sola pregunta."
+		tipo: "ruta",
+		ruta: "/reparar"
 	},
 	{
 		id: "restaurar",
 		label: "Restaurar un mueble de segunda mano",
 		descripcion: "Recupera muebles dañados o antiguos",
 		icono: Sofa,
-		contexto: "El usuario quiere restaurar un mueble de segunda mano. Pregúntale si tiene una fotografía del mueble. Si la tiene, pídele que la suba. Si no, pregúntale qué tipo de mueble es y qué estado tiene. Una sola pregunta."
+		tipo: "contexto",
+		contexto: "Tengo un mueble de segunda mano que quiero restaurar"
 	},
 ];
 
@@ -78,6 +83,10 @@ export const Home = () => {
 	}, []);
 
 	const iniciarAccion = (accion) => {
+		if (accion.tipo === "ruta") {
+			navigate(accion.ruta);
+			return;
+		}
 		sessionStorage.setItem("gia_contexto_inicial", accion.contexto);
 		navigate("/chat");
 	};
@@ -105,7 +114,7 @@ export const Home = () => {
 
 				<div className="border-t border-douche dark:border-noche-borde mb-6" />
 
-				{/* proyecto activo — solo si existe */}
+				{/* proyecto activo */}
 				{!cargando && proyectoActivo && (
 					<>
 						<div className="mb-6">
@@ -141,7 +150,7 @@ export const Home = () => {
 					</>
 				)}
 
-				{/* nuevo proyecto — centrado, más grande */}
+				{/* nuevo proyecto */}
 				<div className="flex justify-center mb-2">
 					<button
 						onClick={() => navigate("/nuevo-proyecto")}
@@ -165,13 +174,12 @@ export const Home = () => {
 					</button>
 				</div>
 
-				{/* acciones rápidas — 2+2+1 centrada */}
+				{/* acciones rápidas */}
 				<div className="mb-8">
 					<p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-3 mt-6">
 						Acciones rápidas
 					</p>
 
-					{/* fila 1 */}
 					<div className="grid grid-cols-2 gap-2 mb-2">
 						{ACCIONES.slice(0, 2).map((accion) => {
 							const Icono = accion.icono;
@@ -193,7 +201,6 @@ export const Home = () => {
 						})}
 					</div>
 
-					{/* fila 2 */}
 					<div className="grid grid-cols-2 gap-2 mb-2">
 						{ACCIONES.slice(2, 4).map((accion) => {
 							const Icono = accion.icono;
@@ -215,7 +222,6 @@ export const Home = () => {
 						})}
 					</div>
 
-					{/* fila 3 — última centrada */}
 					<div className="flex justify-center">
 						<button
 							onClick={() => iniciarAccion(ACCIONES[4])}

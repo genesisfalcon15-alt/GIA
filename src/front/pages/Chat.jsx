@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { LogoGia } from "../components/LogoGia";
+import ReactMarkdown from "react-markdown";
 
 export const Chat = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const bottomRef = useRef(null);
     const fileInputRef = useRef(null);
+    const imgInputRef = useRef(null);
 
     const [sidebarAbierto, setSidebarAbierto] = useState(false);
     const [conversaciones, setConversaciones] = useState([]);
@@ -17,10 +19,23 @@ export const Chat = () => {
     const [cargandoHistorial, setCargandoHistorial] = useState(true);
     const [borrandoId, setBorrandoId] = useState(null);
     const [subiendoPDF, setSubiendoPDF] = useState(false);
+    const [subiendoImagen, setSubiendoImagen] = useState(false);
+    const [escuchando, setEscuchando] = useState(false);
+    const [pasoActual, setPasoActual] = useState(0);
+    const [totalPasos, setTotalPasos] = useState(0);
 
     const token = localStorage.getItem("token");
 
-    // carga el historial de conversaciones
+    const detectarProgreso = (contenido) => {
+        const match = contenido.match(/paso\s+(\d+)\s+de\s+(\d+)/i) ||
+            contenido.match(/paso\s+(\d+)/i);
+        if (match) {
+            setPasoActual(parseInt(match[1]));
+            if (match[2]) setTotalPasos(parseInt(match[2]));
+            else if (totalPasos === 0) setTotalPasos(12);
+        }
+    };
+
     const cargarConversaciones = async () => {
         try {
             const response = await fetch(
@@ -36,18 +51,23 @@ export const Chat = () => {
         }
     };
 
-    // abre una conversacion existente
     const abrirConversacion = async (id) => {
         setSidebarAbierto(false);
         setConversacionActiva(id);
         setCargando(true);
+        setPasoActual(0);
+        setTotalPasos(0);
         try {
             const response = await fetch(
                 `${import.meta.env.VITE_BACKEND_URL}/api/conversations/${id}`,
                 { headers: { "Authorization": `Bearer ${token}` } }
             );
             const data = await response.json();
-            setMensajes(data.messages || []);
+            const msgs = data.messages || [];
+            setMensajes(msgs);
+            msgs.forEach(m => {
+                if (m.role === "assistant") detectarProgreso(m.content);
+            });
         } catch (err) {
             console.error("error cargando conversacion:", err);
         } finally {
@@ -55,7 +75,6 @@ export const Chat = () => {
         }
     };
 
-    // borra una conversacion
     const borrarConversacion = async (e, id) => {
         e.stopPropagation();
         if (!window.confirm("¿Seguro que quieres borrar esta conversación?")) return;
@@ -63,14 +82,13 @@ export const Chat = () => {
         try {
             await fetch(
                 `${import.meta.env.VITE_BACKEND_URL}/api/conversations/${id}`,
-                {
-                    method: "DELETE",
-                    headers: { "Authorization": `Bearer ${token}` }
-                }
+                { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } }
             );
             if (conversacionActiva === id) {
                 setConversacionActiva(null);
                 setMensajes([]);
+                setPasoActual(0);
+                setTotalPasos(0);
             }
             cargarConversaciones();
         } catch (err) {
@@ -80,27 +98,25 @@ export const Chat = () => {
         }
     };
 
-    // nueva conversacion vacía
     const nuevaConversacion = () => {
         setConversacionActiva(null);
         setMensajes([]);
         setInput("");
         setSidebarAbierto(false);
+        setPasoActual(0);
+        setTotalPasos(0);
     };
 
-    // envía un mensaje al backend
     const enviarMensaje = async () => {
         if (!input.trim() || cargando) return;
         const texto = input.trim();
         setInput("");
-
         setMensajes(prev => [...prev, {
             role: "user",
             content: texto,
             created_at: new Date().toISOString()
         }]);
         setCargando(true);
-
         try {
             const response = await fetch(
                 `${import.meta.env.VITE_BACKEND_URL}/api/chat`,
@@ -119,6 +135,7 @@ export const Chat = () => {
             const data = await response.json();
             if (data.message && data.message.role) {
                 setMensajes(prev => [...prev, data.message]);
+                if (data.message.role === "assistant") detectarProgreso(data.message.content);
             }
             if (!conversacionActiva && data.conversation_id) {
                 setConversacionActiva(data.conversation_id);
@@ -131,13 +148,10 @@ export const Chat = () => {
         }
     };
 
-    // sube un PDF al proyecto activo
     const subirPDF = async (e) => {
         const archivo = e.target.files[0];
         if (!archivo) return;
-
         let projectId = conversacionActiva;
-
         if (!projectId) {
             setMensajes(prev => [...prev, {
                 role: "user",
@@ -148,21 +162,13 @@ export const Chat = () => {
             try {
                 const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/chat`, {
                     method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${token}`,
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        conversation_id: null,
-                        message: `He subido el manual: ${archivo.name}`
-                    })
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ conversation_id: null, message: `He subido el manual: ${archivo.name}` })
                 });
                 const data = await res.json();
                 projectId = data.conversation_id;
                 setConversacionActiva(projectId);
-                if (data.message && data.message.role) {
-                    setMensajes(prev => [...prev, data.message]);
-                }
+                if (data.message && data.message.role) setMensajes(prev => [...prev, data.message]);
             } catch (err) {
                 console.error("error creando conversacion:", err);
                 setCargando(false);
@@ -171,53 +177,95 @@ export const Chat = () => {
                 setCargando(false);
             }
         }
-
-        console.log("subiendo pdf a project:", projectId);
         setSubiendoPDF(true);
         setMensajes(prev => [...prev, {
             role: "assistant",
-            content: `Recibido. Estoy analizando el manual. Dame un momento.`,
+            content: "Recibido. Estoy analizando el manual. Dame un momento.",
             created_at: new Date().toISOString()
         }]);
-
         try {
             const formData = new FormData();
             formData.append("file", archivo);
-
             const response = await fetch(
                 `${import.meta.env.VITE_BACKEND_URL}/api/manuals/${projectId}/upload`,
-                {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${token}` },
-                    body: formData
-                }
+                { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: formData }
             );
-
-            if (response.ok) {
-                setMensajes(prev => [...prev, {
-                    role: "assistant",
-                    content: `Manual listo. Ya conozco su contenido. ¿Por dónde empezamos?`,
-                    created_at: new Date().toISOString()
-                }]);
-            } else {
-                setMensajes(prev => [...prev, {
-                    role: "assistant",
-                    content: `No pude procesar el manual. Inténtalo de nuevo.`,
-                    created_at: new Date().toISOString()
-                }]);
-            }
-            cargarConversaciones();
-        } catch (err) {
-            console.error("error subiendo pdf:", err);
             setMensajes(prev => [...prev, {
                 role: "assistant",
-                content: `No pude conectar con el servidor. Comprueba tu conexión.`,
+                content: response.ok
+                    ? "Manual listo. Ya conozco su contenido. ¿Por dónde empezamos?"
+                    : "No pude procesar el manual. Inténtalo de nuevo.",
+                created_at: new Date().toISOString()
+            }]);
+            cargarConversaciones();
+        } catch {
+            setMensajes(prev => [...prev, {
+                role: "assistant",
+                content: "No pude conectar con el servidor.",
                 created_at: new Date().toISOString()
             }]);
         } finally {
             setSubiendoPDF(false);
             if (fileInputRef.current) fileInputRef.current.value = "";
         }
+    };
+
+    // sube una imagen al chat para que GIA la analice
+    const subirImagen = async (e) => {
+        const archivo = e.target.files[0];
+        if (!archivo) return;
+        setSubiendoImagen(true);
+        setMensajes(prev => [...prev, {
+            role: "user",
+            content: "He enviado una fotografía para que la analices.",
+            created_at: new Date().toISOString()
+        }]);
+        setCargando(true);
+        try {
+            const response = await fetch(
+                `${import.meta.env.VITE_BACKEND_URL}/api/chat`,
+                {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        conversation_id: conversacionActiva,
+                        message: "He enviado una fotografía. Analízala: identifica qué es, su estado, daños visibles, errores de montaje, piezas faltantes y si se puede reparar."
+                    })
+                }
+            );
+            const data = await response.json();
+            if (data.message && data.message.role) setMensajes(prev => [...prev, data.message]);
+            if (!conversacionActiva && data.conversation_id) setConversacionActiva(data.conversation_id);
+            cargarConversaciones();
+        } catch (err) {
+            console.error("error enviando imagen:", err);
+        } finally {
+            setCargando(false);
+            setSubiendoImagen(false);
+            if (imgInputRef.current) imgInputRef.current.value = "";
+        }
+    };
+
+    // dictado de voz con Web Speech API — funciona en Chrome y Safari
+    const iniciarVoz = () => {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            alert("Tu navegador no soporta dictado de voz. Usa Chrome.");
+            return;
+        }
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = "es-ES";
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        setEscuchando(true);
+        recognition.start();
+        recognition.onresult = (e) => {
+            const texto = e.results[0][0].transcript;
+            setInput(prev => prev + texto);
+            setEscuchando(false);
+        };
+        recognition.onerror = () => setEscuchando(false);
+        recognition.onend = () => setEscuchando(false);
     };
 
     const handleKeyDown = (e) => {
@@ -235,62 +283,35 @@ export const Chat = () => {
 
     const formatHora = (fechaStr) => {
         if (!fechaStr) return "";
-        return new Date(fechaStr).toLocaleTimeString("es-ES", {
-            hour: "2-digit",
-            minute: "2-digit"
-        });
+        return new Date(fechaStr).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
     };
 
-    // efecto principal — al montar el componente
     useEffect(() => {
-        if (!token) {
-            navigate("/login");
-            return;
-        }
-
+        if (!token) { navigate("/login"); return; }
         cargarConversaciones();
-
-        // si viene con una conversacion especifica la abre
         const convId = searchParams.get("conversation");
-        if (convId) {
-            abrirConversacion(parseInt(convId));
-            return;
-        }
-
-        // si viene con contexto inicial lo envía automáticamente
+        if (convId) { abrirConversacion(parseInt(convId)); return; }
         const contextoInicial = sessionStorage.getItem("gia_contexto_inicial");
         if (contextoInicial) {
             sessionStorage.removeItem("gia_contexto_inicial");
             setTimeout(async () => {
-                setMensajes([{
-                    role: "user",
-                    content: contextoInicial,
-                    created_at: new Date().toISOString()
-                }]);
+                setMensajes([{ role: "user", content: contextoInicial, created_at: new Date().toISOString() }]);
                 setCargando(true);
                 try {
                     const response = await fetch(
                         `${import.meta.env.VITE_BACKEND_URL}/api/chat`,
                         {
                             method: "POST",
-                            headers: {
-                                "Authorization": `Bearer ${token}`,
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                conversation_id: null,
-                                message: contextoInicial
-                            })
+                            headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+                            body: JSON.stringify({ conversation_id: null, message: contextoInicial })
                         }
                     );
                     const data = await response.json();
                     if (data.message && data.message.role) {
                         setMensajes(prev => [...prev, data.message]);
+                        detectarProgreso(data.message.content);
                     }
-                    if (data.conversation_id) {
-                        setConversacionActiva(data.conversation_id);
-                    }
-                    // recarga sidebar con la nueva conversacion
+                    if (data.conversation_id) setConversacionActiva(data.conversation_id);
                     const res = await fetch(
                         `${import.meta.env.VITE_BACKEND_URL}/api/conversations`,
                         { headers: { "Authorization": `Bearer ${token}` } }
@@ -306,41 +327,31 @@ export const Chat = () => {
         }
     }, []);
 
-    // scroll al último mensaje
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [mensajes]);
 
+    const porcentaje = totalPasos > 0 ? Math.round((pasoActual / totalPasos) * 100) : 0;
+
     return (
         <div className="flex h-screen w-full overflow-hidden bg-ivoire dark:bg-noche">
 
-            {/* overlay movil */}
             {sidebarAbierto && (
-                <div
-                    className="fixed inset-0 bg-black/40 z-20 md:hidden"
-                    onClick={() => setSidebarAbierto(false)}
-                />
+                <div className="fixed inset-0 bg-black/40 z-20 md:hidden" onClick={() => setSidebarAbierto(false)} />
             )}
 
             {/* SIDEBAR */}
             <aside className={`
-                fixed md:relative z-30 md:z-auto
-                h-full w-64 flex-shrink-0
-                bg-white dark:bg-noche-suave
-                border-r border-douche dark:border-noche-borde
-                flex flex-col
-                transition-transform duration-300
+                fixed md:relative z-30 md:z-auto h-full w-64 flex-shrink-0
+                bg-white dark:bg-noche-suave border-r border-douche dark:border-noche-borde
+                flex flex-col transition-transform duration-300
                 ${sidebarAbierto ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
             `}>
                 <div className="p-4 flex items-center justify-between">
                     <Link to="/" className="hover:opacity-70 transition">
                         <LogoGia size={28} />
                     </Link>
-                    <button
-                        onClick={nuevaConversacion}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire hover:bg-douche/50 dark:hover:bg-white/5 transition"
-                        title="Nueva conversación"
-                    >
+                    <button onClick={nuevaConversacion} className="w-7 h-7 rounded-lg flex items-center justify-center text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire hover:bg-douche/50 dark:hover:bg-white/5 transition">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <path d="M12 5v14M5 12h14" />
                         </svg>
@@ -353,39 +364,15 @@ export const Chat = () => {
                             <div className="w-4 h-4 border-2 border-douche border-t-gris-piedra rounded-full animate-spin mx-auto" />
                         </div>
                     ) : conversaciones.length === 0 ? (
-                        <p className="text-xs text-gris-piedra px-3 py-8 text-center leading-relaxed">
-                            Aún no tienes proyectos
-                        </p>
+                        <p className="text-xs text-gris-piedra px-3 py-8 text-center">Aún no tienes proyectos</p>
                     ) : (
                         conversaciones.map((conv) => (
-                            <div
-                                key={conv.id}
-                                className={`
-                                    group relative flex items-center rounded-lg mb-0.5 transition
-                                    ${conversacionActiva === conv.id
-                                        ? "bg-douche dark:bg-noche-borde"
-                                        : "hover:bg-douche/40 dark:hover:bg-white/5"
-                                    }
-                                `}
-                            >
-                                <button
-                                    onClick={() => abrirConversacion(conv.id)}
-                                    className="flex-1 text-left px-3 py-2.5 min-w-0"
-                                >
-                                    <p className="text-sm font-medium truncate text-deep-ocean dark:text-ivoire leading-tight">
-                                        {conv.title || "Sin título"}
-                                    </p>
-                                    {conv.has_manual && (
-                                        <p className="text-xs text-noyer dark:text-mantequilla mt-0.5">
-                                            Manual
-                                        </p>
-                                    )}
+                            <div key={conv.id} className={`group relative flex items-center rounded-lg mb-0.5 transition ${conversacionActiva === conv.id ? "bg-douche dark:bg-noche-borde" : "hover:bg-douche/40 dark:hover:bg-white/5"}`}>
+                                <button onClick={() => abrirConversacion(conv.id)} className="flex-1 text-left px-3 py-2.5 min-w-0">
+                                    <p className="text-sm font-medium truncate text-deep-ocean dark:text-ivoire leading-tight">{conv.title || "Sin título"}</p>
+                                    {conv.has_manual && <p className="text-xs text-noyer dark:text-mantequilla mt-0.5">Manual</p>}
                                 </button>
-                                <button
-                                    onClick={(e) => borrarConversacion(e, conv.id)}
-                                    disabled={borrandoId === conv.id}
-                                    className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-2 mr-1 rounded text-gris-piedra hover:text-red-500 transition"
-                                >
+                                <button onClick={(e) => borrarConversacion(e, conv.id)} disabled={borrandoId === conv.id} className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-2 mr-1 rounded text-gris-piedra hover:text-red-500 transition">
                                     {borrandoId === conv.id ? (
                                         <div className="w-3 h-3 border border-gris-piedra border-t-transparent rounded-full animate-spin" />
                                     ) : (
@@ -402,10 +389,7 @@ export const Chat = () => {
                 </div>
 
                 <div className="p-4 border-t border-douche dark:border-noche-borde">
-                    <button
-                        onClick={cerrarSesion}
-                        className="flex items-center gap-2 text-xs text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire transition"
-                    >
+                    <button onClick={cerrarSesion} className="flex items-center gap-2 text-xs text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire transition">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
                             <polyline points="16 17 21 12 16 7" />
@@ -419,11 +403,9 @@ export const Chat = () => {
             {/* ÁREA PRINCIPAL */}
             <main className="flex-1 flex flex-col min-w-0 h-full">
 
+                {/* barra superior móvil */}
                 <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-douche dark:border-noche-borde bg-white dark:bg-noche-suave">
-                    <button
-                        onClick={() => setSidebarAbierto(true)}
-                        className="text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire transition"
-                    >
+                    <button onClick={() => setSidebarAbierto(true)} className="text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire transition">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                             <path d="M3 12h18M3 6h18M3 18h18" />
                         </svg>
@@ -431,6 +413,36 @@ export const Chat = () => {
                     <LogoGia size={24} />
                 </div>
 
+                {/* barra de progreso */}
+                {totalPasos > 0 && (
+                    <div className="px-6 py-2.5 border-b border-douche dark:border-noche-borde bg-white dark:bg-noche-suave">
+                        <div className="max-w-2xl mx-auto flex items-center gap-4">
+                            {/* icono timer — solo visible cuando hay progreso */}
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-noyer dark:text-mantequilla flex-shrink-0">
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-[10px] font-semibold tracking-[0.12em] uppercase text-gris-piedra">
+                                        Paso {pasoActual} de {totalPasos}
+                                    </span>
+                                    <span className="text-[10px] font-medium text-noyer dark:text-mantequilla">
+                                        {porcentaje}%
+                                    </span>
+                                </div>
+                                <div className="h-0.5 w-full bg-douche dark:bg-noche-borde rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-noyer dark:bg-mantequilla rounded-full transition-all duration-500"
+                                        style={{ width: `${porcentaje}%` }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* mensajes */}
                 <div className="flex-1 overflow-y-auto">
                     {mensajes.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center px-6 text-center">
@@ -442,25 +454,13 @@ export const Chat = () => {
                     ) : (
                         <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
                             {mensajes.map((msg, index) => (
-                                <div
-                                    key={index}
-                                    className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
-                                >
-                                    <div className={`
-                                        max-w-[78%] px-4 py-3 rounded-2xl text-sm leading-relaxed
-                                        ${msg.role === "user"
-                                            ? "bg-deep-ocean text-ivoire dark:bg-sky dark:text-noche rounded-br-sm"
-                                            : "bg-white dark:bg-noche-suave text-deep-ocean dark:text-ivoire border border-douche dark:border-noche-borde rounded-bl-sm"
-                                        }
-                                    `}>
-                                        {msg.content}
+                                <div key={index} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                                    <div className={`max-w-[78%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === "user" ? "bg-deep-ocean text-ivoire dark:bg-sky dark:text-noche rounded-br-sm" : "bg-white dark:bg-noche-suave text-deep-ocean dark:text-ivoire border border-douche dark:border-noche-borde rounded-bl-sm"}`}>
+                                        <ReactMarkdown>{msg.content}</ReactMarkdown>
                                     </div>
-                                    <span className="text-[10px] text-gris-piedra/60 mt-1 px-1">
-                                        {formatHora(msg.created_at)}
-                                    </span>
+                                    <span className="text-[10px] text-gris-piedra/60 mt-1 px-1">{formatHora(msg.created_at)}</span>
                                 </div>
                             ))}
-
                             {cargando && (
                                 <div className="flex items-start">
                                     <div className="bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde px-4 py-3 rounded-2xl rounded-bl-sm">
@@ -472,53 +472,85 @@ export const Chat = () => {
                                     </div>
                                 </div>
                             )}
-
                             <div ref={bottomRef} />
                         </div>
                     )}
                 </div>
 
+                {/* INPUT */}
                 <div className="border-t border-douche dark:border-noche-borde bg-white dark:bg-noche-suave px-4 py-3">
                     <div className="max-w-2xl mx-auto">
                         <div className="flex gap-2 items-end">
 
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept=".pdf"
-                                onChange={subirPDF}
-                                className="hidden"
-                            />
+                            {/* inputs ocultos */}
+                            <input ref={fileInputRef} type="file" accept=".pdf" onChange={subirPDF} className="hidden" />
+                            <input ref={imgInputRef} type="file" accept="image/*" capture="environment" onChange={subirImagen} className="hidden" />
 
+                            {/* PDF */}
                             <button
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={subiendoPDF || cargando}
-                                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-douche dark:border-noche-borde text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire hover:border-deep-ocean/30 transition disabled:opacity-40 text-xs font-medium whitespace-nowrap"
+                                title="Subir manual PDF"
+                                className="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-lg border border-douche dark:border-noche-borde text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire hover:border-deep-ocean/30 transition disabled:opacity-40"
                             >
                                 {subiendoPDF ? (
                                     <div className="w-3.5 h-3.5 border border-gris-piedra border-t-transparent rounded-full animate-spin" />
                                 ) : (
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                         <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
                                         <polyline points="14 2 14 8 20 8" />
                                         <line x1="12" y1="18" x2="12" y2="12" />
                                         <line x1="9" y1="15" x2="15" y2="15" />
                                     </svg>
                                 )}
-                                <span className="hidden sm:block">
-                                    {subiendoPDF ? "Procesando..." : "PDF"}
-                                </span>
                             </button>
 
+                            {/* Cámara */}
+                            <button
+                                onClick={() => imgInputRef.current?.click()}
+                                disabled={subiendoImagen || cargando}
+                                title="Subir fotografía"
+                                className="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-lg border border-douche dark:border-noche-borde text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire hover:border-deep-ocean/30 transition disabled:opacity-40"
+                            >
+                                {subiendoImagen ? (
+                                    <div className="w-3.5 h-3.5 border border-gris-piedra border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                        <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+                                        <circle cx="12" cy="13" r="4" />
+                                    </svg>
+                                )}
+                            </button>
+
+                            {/* Micrófono */}
+                            <button
+                                onClick={iniciarVoz}
+                                disabled={cargando}
+                                title="Dictado de voz"
+                                className={`flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-lg border transition ${escuchando
+                                    ? "border-deep-ocean dark:border-sky text-deep-ocean dark:text-sky bg-deep-ocean/5"
+                                    : "border-douche dark:border-noche-borde text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire hover:border-deep-ocean/30"
+                                    } disabled:opacity-40`}
+                            >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                    <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+                                    <path d="M19 10v2a7 7 0 01-14 0v-2" />
+                                    <line x1="12" y1="19" x2="12" y2="23" />
+                                    <line x1="8" y1="23" x2="16" y2="23" />
+                                </svg>
+                            </button>
+
+                            {/* textarea */}
                             <textarea
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Escribe o describe tu proyecto..."
+                                placeholder={escuchando ? "Escuchando..." : "Escribe o habla..."}
                                 rows={1}
                                 className="flex-1 resize-none px-3.5 py-2.5 rounded-lg border border-douche dark:border-noche-borde bg-ivoire dark:bg-noche text-deep-ocean dark:text-ivoire placeholder:text-gris-piedra text-sm outline-none focus:border-deep-ocean/40 dark:focus:border-sky/40 transition max-h-32 overflow-y-auto"
                             />
 
+                            {/* enviar */}
                             <button
                                 onClick={enviarMensaje}
                                 disabled={!input.trim() || cargando}
@@ -529,7 +561,6 @@ export const Chat = () => {
                                 </svg>
                             </button>
                         </div>
-
                         <p className="text-center text-[10px] text-gris-piedra/50 mt-2">
                             Enter para enviar · Shift+Enter para saltar línea
                         </p>
