@@ -38,7 +38,12 @@ def register():
     db.session.add(new_user)
     db.session.commit()
 
-    return jsonify(new_user.serialize()), 201
+    # devuelvo el token igual que en login para que el frontend lo guarde
+    access_token = create_access_token(identity=str(new_user.id))
+    return jsonify({
+        "token": access_token,
+        "user": new_user.serialize()
+    }), 201
 
 
 @auth_bp.route('/login', methods=['POST'])

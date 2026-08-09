@@ -1,7 +1,8 @@
-from flask import jsonify, Blueprint
+from flask import jsonify, Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from api.models import db, Project
+from api.models import db, Project, ProjectTimeline
 from api.utils import APIException
+from datetime import datetime
 
 # blueprint de conversaciones, gestiona el historial del sidebar
 conversations_bp = Blueprint('conversations', __name__)
@@ -70,6 +71,59 @@ def get_conversation(conversation_id):
         "created_at": conversacion.created_at.isoformat(),
         "messages": mensajes,
         "manual": manual
+    }), 200
+
+
+@conversations_bp.route('/<int:conversation_id>', methods=['PATCH'])
+@jwt_required()
+def update_conversation_status(conversation_id):
+    """
+    actualiza el status del proyecto — completado, pendiente_confirmar, etc.
+    nunca borra datos, solo cambia el estado
+    """
+    user_id = int(get_jwt_identity())
+
+    conversacion = Project.query.get(conversation_id)
+    if not conversacion:
+        raise APIException("conversacion no encontrada", status_code=404)
+    if conversacion.user_id != user_id:
+        raise APIException("no tienes permiso para esta conversacion", status_code=403)
+
+    body = request.get_json(silent=True)
+    if not body:
+        raise APIException("faltan datos", status_code=400)
+
+    # estados permitidos
+    estados_validos = [
+        "en_progreso", "pendiente_confirmar", "completado",
+        "pausado", "instalado", "reparado", "restaurado",
+        "desmontado", "cancelado"
+    ]
+
+    nuevo_status = body.get("status")
+    if nuevo_status and nuevo_status not in estados_validos:
+        raise APIException(f"estado no válido: {nuevo_status}", status_code=400)
+
+    status_anterior = conversacion.status
+
+    if nuevo_status:
+        conversacion.status = nuevo_status
+
+    # registra el cambio en el timeline automáticamente
+    if nuevo_status and nuevo_status != status_anterior:
+        evento = ProjectTimeline()
+        evento.project_id = conversacion.id
+        evento.tipo = nuevo_status
+        evento.evento = f"Estado actualizado a: {nuevo_status}"
+        db.session.add(evento)
+
+    conversacion.updated_at = datetime.utcnow()
+    db.session.commit()
+
+    return jsonify({
+        "id": conversacion.id,
+        "status": conversacion.status,
+        "message": "estado actualizado"
     }), 200
 
 

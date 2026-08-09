@@ -26,6 +26,8 @@ sentence-transformers = "*"
 flask-migrate = "*"
 torch = "==2.2.2"
 numpy = "<2"
+anthropic = "*"
+pillow = "*"
 
 [requires]
 python_version = "3.12"

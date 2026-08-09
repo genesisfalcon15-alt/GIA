@@ -27,8 +27,11 @@ class User(db.Model):
     daily_message_count: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     last_message_date: Mapped[str] = mapped_column(String(10), nullable=True)
 
-    # relacion con Project: un user tiene muchos montajes
+    # relacion con Project
     projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+    # relacion con UserTool: caja de herramientas del usuario
+    tools: Mapped[list["UserTool"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
     def set_password(self, password):
         self.password = generate_password_hash(password)
@@ -67,16 +70,24 @@ class Project(db.Model):
     # minutos invertidos en el proyecto
     time_invested: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
 
+    # extra_data flexible: brand, model, room, favorite, archived, color, etc.
+    # evita migraciones cada vez que se añade un campo nuevo
+    # NO usar "metadata" — es palabra reservada en SQLAlchemy
+    extra_data: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True, default=dict)
+
     # relacion con Manual
     manuals: Mapped[list["Manual"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
     # relacion con ChatHistory
     chat_history: Mapped[list["ChatHistory"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
-    # relacion con las nuevas tablas del proyecto
+    # relaciones con tablas del proyecto
     timeline: Mapped[list["ProjectTimeline"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     notes: Mapped[list["ProjectNote"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     photos: Mapped[list["ProjectPhoto"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    items: Mapped[list["ProjectItem"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    project_tools: Mapped[list["ProjectTool"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    transformations: Mapped[list["ProjectTransformation"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
     # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
@@ -97,6 +108,7 @@ class Project(db.Model):
             "category": self.category,
             "progress": self.progress,
             "time_invested": self.time_invested,
+            "extra_data": self.extra_data or {},
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "last_message": ultimo,
@@ -108,29 +120,17 @@ class Project(db.Model):
 class Manual(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    # cadena de seguridad: user -> project -> manual
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
     project: Mapped[Project] = relationship(back_populates="manuals")
 
-    # url en cloudinary donde guardamos el pdf
     file_url: Mapped[str] = mapped_column(String(500), nullable=False)
-
-    # nombre original del archivo para mostrar al usuario
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
-
-    # procesando, listo, error
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="procesando")
-
-    # cuantos fragmentos generamos del manual
     total_chunks: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
 
-    # relacion con ManualChunk
     chunks: Mapped[list["ManualChunk"]] = relationship(back_populates="manual", cascade="all, delete-orphan")
-
-    # relacion con ManualMetadata (uno a uno)
     manual_metadata: Mapped[Optional["ManualMetadata"]] = relationship(back_populates="manual", cascade="all, delete-orphan", uselist=False)
 
-    # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     def serialize(self):
@@ -147,23 +147,14 @@ class Manual(db.Model):
 class ManualChunk(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    # a que manual pertenece este fragmento
     manual_id: Mapped[int] = mapped_column(ForeignKey("manual.id"), nullable=False)
     manual: Mapped[Manual] = relationship(back_populates="chunks")
 
-    # el texto del fragmento
     content: Mapped[str] = mapped_column(Text, nullable=False)
-
-    # vector de busqueda semántica
     embedding: Mapped[list[float]] = mapped_column(JSON, nullable=True)
-
-    # de que pagina viene
     page_number: Mapped[int] = mapped_column(Integer(), nullable=True)
-
-    # orden dentro del manual
     chunk_index: Mapped[int] = mapped_column(Integer(), nullable=False)
 
-    # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     def serialize(self):
@@ -179,32 +170,17 @@ class ManualChunk(db.Model):
 class ManualMetadata(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    # relacion uno a uno con el manual
     manual_id: Mapped[int] = mapped_column(ForeignKey("manual.id"), nullable=False, unique=True)
     manual: Mapped["Manual"] = relationship(back_populates="manual_metadata")
 
-    # herramientas necesarias extraidas del manual
     tools_required: Mapped[list] = mapped_column(JSON, nullable=True)
-
-    # lista de piezas del mueble
     parts_list: Mapped[list] = mapped_column(JSON, nullable=True)
-
-    # tornilleria y elementos de fijacion
     hardware_list: Mapped[list] = mapped_column(JSON, nullable=True)
-
-    # numero total de pasos del montaje
     total_steps: Mapped[int] = mapped_column(Integer(), nullable=True)
-
-    # advertencias de seguridad importantes
     safety_warnings: Mapped[list] = mapped_column(JSON, nullable=True)
-
-    # tiempo estimado de montaje
     estimated_time: Mapped[str] = mapped_column(String(100), nullable=True)
-
-    # nivel de dificultad: facil, medio, dificil
     difficulty: Mapped[str] = mapped_column(String(30), nullable=True)
 
-    # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     def serialize(self):
@@ -223,23 +199,14 @@ class ManualMetadata(db.Model):
 class ChatHistory(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    # a que montaje pertenece esta conversacion
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
     project: Mapped[Project] = relationship(back_populates="chat_history")
 
-    # lo que pregunto el usuario
     user_message: Mapped[str] = mapped_column(Text, nullable=False)
-
-    # lo que contesto gia
     gia_response: Mapped[str] = mapped_column(Text, nullable=False)
-
-    # ids de los chunks que uso para responder
     chunks_used: Mapped[list[int]] = mapped_column(JSON, nullable=True)
-
-    # cuantos tokens gaste en esta llamada
     tokens_used: Mapped[int] = mapped_column(Integer(), nullable=True)
 
-    # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     def serialize(self):
@@ -257,17 +224,12 @@ class ChatHistory(db.Model):
 class ProjectTimeline(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    # a que montaje pertenece este evento
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
     project: Mapped["Project"] = relationship(back_populates="timeline")
 
-    # descripcion del evento ocurrido
     evento: Mapped[str] = mapped_column(String(300), nullable=False)
-
-    # info, incidencia, hito, completado
     tipo: Mapped[str] = mapped_column(String(50), nullable=False, default="info")
 
-    # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     def serialize(self):
@@ -283,14 +245,11 @@ class ProjectTimeline(db.Model):
 class ProjectNote(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    # a que montaje pertenece esta nota
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
     project: Mapped["Project"] = relationship(back_populates="notes")
 
-    # contenido de la nota personal del usuario
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     def serialize(self):
@@ -305,17 +264,12 @@ class ProjectNote(db.Model):
 class ProjectPhoto(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    # a que montaje pertenece esta foto
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
     project: Mapped["Project"] = relationship(back_populates="photos")
 
-    # url en cloudinary
     url: Mapped[str] = mapped_column(String(500), nullable=False)
-
-    # descripcion opcional de la foto
     caption: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
 
-    # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     def serialize(self):
@@ -325,4 +279,139 @@ class ProjectPhoto(db.Model):
             "url": self.url,
             "caption": self.caption,
             "created_at": self.created_at.isoformat(),
+        }
+
+
+class UserTool(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
+    user: Mapped["User"] = relationship(back_populates="tools")
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    brand: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="excelente")
+    photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    date_added: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    last_used: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    project_count: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "category": self.category,
+            "brand": self.brand,
+            "model": self.model,
+            "status": self.status,
+            "photo_url": self.photo_url,
+            "date_added": self.date_added.isoformat(),
+            "last_used": self.last_used.isoformat() if self.last_used else None,
+            "project_count": self.project_count,
+            "notes": self.notes,
+        }
+
+
+class ProjectTool(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    project: Mapped["Project"] = relationship(back_populates="project_tools")
+
+    user_tool_id: Mapped[int] = mapped_column(ForeignKey("user_tool.id"), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "user_tool_id": self.user_tool_id,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class ProjectItem(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    project: Mapped["Project"] = relationship(back_populates="items")
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    quantity_total: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
+    quantity_used: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="disponible")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "name": self.name,
+            "reference": self.reference,
+            "quantity_total": self.quantity_total,
+            "quantity_used": self.quantity_used,
+            "quantity_remaining": self.quantity_total - self.quantity_used,
+            "status": self.status,
+        }
+
+
+class ProjectTransformation(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), nullable=False)
+    project: Mapped["Project"] = relationship(back_populates="transformations")
+
+    from_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    to_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "from_type": self.from_type,
+            "to_type": self.to_type,
+            "description": self.description,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class UserProfile(db.Model):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False, unique=True)
+
+    experience_level: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    home_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    wall_types: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    tools_available: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    interests: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    help_style: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    sector: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    team_size: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "experience_level": self.experience_level,
+            "home_type": self.home_type,
+            "wall_types": self.wall_types or [],
+            "tools_available": self.tools_available or [],
+            "interests": self.interests or [],
+            "help_style": self.help_style,
+            "sector": self.sector,
+            "team_size": self.team_size,
         }

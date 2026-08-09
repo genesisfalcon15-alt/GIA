@@ -12,6 +12,16 @@ REFERENCIAS_CONVERSACIONALES = [
     "qué es", "qué hay", "qué tiene", "qué contiene", "qué dice"
 ]
 
+# palabras que indican referencia a proyectos anteriores
+REFERENCIAS_PROYECTOS_ANTERIORES = [
+    "recuerdas", "recuerda", "el otro día", "la semana pasada", "antes",
+    "el proyecto", "aquella vez", "cuando monté", "cuando instalé",
+    "cuando reparé", "el armario que", "la cama que", "la mesa que",
+    "el sofá que", "la lámpara que", "el mueble que", "aquel",
+    "aquella", "los tornillos de", "las herramientas de", "qué usé en",
+    "qué tornillos", "qué tacos", "qué broca", "qué llave allen"
+]
+
 KEYWORDS_HERRAMIENTAS = ["herramienta", "herramientas", "necesito", "qué necesito", "qué hace falta"]
 KEYWORDS_PIEZAS = ["pieza", "piezas", "componente", "componentes", "parte", "partes", "qué viene"]
 KEYWORDS_TORNILLERIA = ["tornillo", "tornillos", "tuerca", "tuercas", "anclaje", "clavo", "fijación"]
@@ -28,6 +38,15 @@ def es_referencia_conversacional(mensaje):
                 return True
     for ref in REFERENCIAS_CONVERSACIONALES:
         if mensaje_lower == ref:
+            return True
+    return False
+
+
+def es_referencia_proyecto_anterior(mensaje):
+    """detecta si el mensaje hace referencia a un proyecto anterior del usuario"""
+    mensaje_lower = mensaje.lower().strip()
+    for ref in REFERENCIAS_PROYECTOS_ANTERIORES:
+        if ref in mensaje_lower:
             return True
     return False
 
@@ -95,7 +114,44 @@ def construir_contexto_metadata(metadata, tipo_pregunta):
     return None
 
 
-def construir_contexto_conversacion(project_id, user_message, historial_groq):
+def buscar_proyectos_anteriores(user_id, project_id_actual, limite=3):
+    """
+    busca proyectos anteriores del usuario para dar contexto de memoria entre proyectos.
+    devuelve un resumen de los proyectos más recientes distintos al actual.
+    """
+    proyectos = Project.query.filter(
+        Project.user_id == user_id,
+        Project.id != project_id_actual,
+        Project.title != None
+    ).order_by(Project.created_at.desc()).limit(limite).all()
+
+    if not proyectos:
+        return None
+
+    lineas = ["Proyectos anteriores del usuario:"]
+    for p in proyectos:
+        linea = f"- {p.title}"
+        if p.status:
+            linea += f" ({p.status})"
+        # busco si tiene manual para añadir contexto
+        manual = Manual.query.filter_by(
+            project_id=p.id,
+            status="listo"
+        ).first()
+        if manual:
+            linea += f" — manual: {manual.original_filename}"
+            # añado metadata si existe
+            metadata = ManualMetadata.query.filter_by(manual_id=manual.id).first()
+            if metadata and metadata.tools_required:
+                tools = ", ".join(metadata.tools_required[:3])
+                linea += f" — herramientas usadas: {tools}"
+        lineas.append(linea)
+
+    print(f"=== CONTEXT: {len(proyectos)} proyectos anteriores encontrados ===")
+    return "\n".join(lineas)
+
+
+def construir_contexto_conversacion(project_id, user_message, historial_groq, user_id=None):
     """
     cerebro de gia: construye el contexto completo antes de cada respuesta
 
@@ -104,7 +160,7 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq):
     2. proyecto activo
     3. metadata estructurada
     4. rag
-    5. conocimiento general (solo groq)
+    5. memoria entre proyectos (si el mensaje lo requiere)
     """
     resultado = {
         "proyecto": None,
@@ -115,6 +171,7 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq):
         "consulta_rag": None,
         "info_proyecto": None,
         "tipo_pregunta": None,
+        "proyectos_anteriores": None,
     }
 
     proyecto = Project.query.get(project_id)
@@ -127,13 +184,19 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq):
         "estado": proyecto.status,
     }
 
+    # si el mensaje hace referencia a proyectos anteriores, los busco
+    if user_id and es_referencia_proyecto_anterior(user_message):
+        contexto_anteriores = buscar_proyectos_anteriores(user_id, project_id)
+        if contexto_anteriores:
+            resultado["proyectos_anteriores"] = contexto_anteriores
+            print(f"=== CONTEXT: memoria entre proyectos activada ===")
+
     # busco el manual más reciente del proyecto en estado listo
     manual = Manual.query.filter_by(
         project_id=project_id,
         status="listo"
     ).order_by(Manual.created_at.desc()).first()
 
-    # si no hay manual listo, busco cualquier manual del proyecto
     if not manual:
         manual = Manual.query.filter_by(
             project_id=project_id
@@ -147,14 +210,12 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq):
 
     print(f"=== CONTEXT: manual encontrado: id={manual.id} project={project_id} status={manual.status} chunks={manual.total_chunks} ===")
 
-    # busco metadata estructurada
     metadata = ManualMetadata.query.filter_by(manual_id=manual.id).first()
     resultado["metadata"] = metadata
 
     tipo_pregunta = detectar_tipo_pregunta(user_message)
     resultado["tipo_pregunta"] = tipo_pregunta
 
-    # si es pregunta sobre metadata, la consulto directamente sin rag
     if tipo_pregunta and metadata:
         contexto_metadata = construir_contexto_metadata(metadata, tipo_pregunta)
         if contexto_metadata:
@@ -162,7 +223,6 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq):
             print(f"=== CONTEXT: usando metadata para tipo={tipo_pregunta} ===")
             return resultado
 
-    # enriquezco la consulta rag si es referencia conversacional
     if es_referencia_conversacional(user_message):
         consulta = construir_consulta_enriquecida(user_message, historial_groq, manual)
         print(f"=== CONTEXT: consulta enriquecida: {consulta[:100]} ===")
@@ -171,7 +231,6 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq):
 
     resultado["consulta_rag"] = consulta
 
-    # ejecuto rag
     chunks = buscar_chunks_relevantes(consulta, manual.id)
     resultado["contexto_rag"] = construir_contexto(chunks)
 
@@ -182,34 +241,42 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq):
 
 def construir_info_manual_para_groq(contexto):
     """
-    construye el contexto completo del proyecto y manual para groq
-    groq siempre sabe qué proyecto está activo y qué información tiene
+    construye el contexto completo del proyecto y manual para groq.
+    incluye proyectos anteriores si los hay.
     """
-    if not contexto["tiene_manual"]:
+    if not contexto["tiene_manual"] and not contexto.get("proyectos_anteriores"):
         return None
 
-    manual = contexto["manual"]
-    proyecto = contexto["info_proyecto"]
-    metadata = contexto["metadata"]
+    lineas = []
 
-    lineas = [
-        f"Proyecto activo: {proyecto['titulo']}",
-        f"Manual disponible: procesado y listo para consulta",
-        f"Fragmentos indexados: {manual.total_chunks}",
-    ]
+    if contexto["tiene_manual"]:
+        manual = contexto["manual"]
+        proyecto = contexto["info_proyecto"]
+        metadata = contexto["metadata"]
 
-    if metadata:
-        if metadata.difficulty:
-            lineas.append(f"Dificultad del montaje: {metadata.difficulty}")
-        if metadata.estimated_time:
-            lineas.append(f"Tiempo estimado: {metadata.estimated_time} minutos")
-        if metadata.total_steps:
-            lineas.append(f"Número de pasos: {metadata.total_steps}")
-        if metadata.tools_required:
-            tools = ", ".join(metadata.tools_required[:5])
-            lineas.append(f"Herramientas necesarias: {tools}")
-        if metadata.safety_warnings:
-            warnings = "; ".join(str(w) for w in metadata.safety_warnings[:2])
-            lineas.append(f"Advertencias: {warnings}")
+        lineas += [
+            f"Proyecto activo: {proyecto['titulo']}",
+            f"Manual disponible: procesado y listo para consulta",
+            f"Fragmentos indexados: {manual.total_chunks}",
+        ]
+
+        if metadata:
+            if metadata.difficulty:
+                lineas.append(f"Dificultad del montaje: {metadata.difficulty}")
+            if metadata.estimated_time:
+                lineas.append(f"Tiempo estimado: {metadata.estimated_time} minutos")
+            if metadata.total_steps:
+                lineas.append(f"Número de pasos: {metadata.total_steps}")
+            if metadata.tools_required:
+                tools = ", ".join(metadata.tools_required[:5])
+                lineas.append(f"Herramientas necesarias: {tools}")
+            if metadata.safety_warnings:
+                warnings = "; ".join(str(w) for w in metadata.safety_warnings[:2])
+                lineas.append(f"Advertencias: {warnings}")
+
+    # añado proyectos anteriores si el usuario hizo referencia a ellos
+    if contexto.get("proyectos_anteriores"):
+        lineas.append("")
+        lineas.append(contexto["proyectos_anteriores"])
 
     return "\n".join(lineas)

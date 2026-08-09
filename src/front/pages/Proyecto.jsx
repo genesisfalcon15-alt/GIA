@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, MessageSquare, BookOpen, Image, FileText, Wrench, Package, StickyNote, Clock } from "lucide-react";
+import { ArrowLeft, MessageSquare, BookOpen, Image, StickyNote, FileText, ChevronDown } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 const PESTANAS = [
@@ -10,6 +10,30 @@ const PESTANAS = [
     { id: "fotos", label: "Fotos", icono: Image },
     { id: "notas", label: "Notas", icono: StickyNote },
 ];
+
+const ACCIONES_PROYECTO = [
+    { id: "continuar", label: "Continuar montaje" },
+    { id: "desmontar", label: "Desmontar" },
+    { id: "reparar", label: "Reparar" },
+    { id: "mejorar", label: "Mejorar" },
+    { id: "modificar", label: "Modificar" },
+    { id: "restaurar", label: "Restaurar" },
+    { id: "reinstalar", label: "Volver a instalar" },
+    { id: "averia", label: "Analizar una avería" },
+    { id: "accesorios", label: "Añadir accesorios" },
+];
+
+const contextoAccion = (accion, titulo) => ({
+    continuar: `Quiero continuar el proyecto: ${titulo}. Retoma desde donde lo dejamos.`,
+    desmontar: `Quiero desmontar ${titulo}. Reutiliza todo el historial del montaje original: orden de desmontaje, piezas delicadas, cómo clasificar tornillos, cómo embalar y transportar.`,
+    reparar: `Quiero reparar ${titulo}. Usa el historial del proyecto para identificar piezas, referencias y herramientas necesarias.`,
+    mejorar: `Quiero mejorar ${titulo}. Usa el historial del proyecto para proponer mejoras compatibles con el montaje actual.`,
+    modificar: `Quiero modificar ${titulo}. Analiza el proyecto original y propone cómo reutilizar piezas existentes.`,
+    restaurar: `Quiero restaurar ${titulo}. Evalúa el estado actual y propone un plan de restauración usando el historial del proyecto.`,
+    reinstalar: `Quiero volver a instalar ${titulo}. Usa el historial original para guiarme desde cero con toda la información ya conocida.`,
+    averia: `Quiero analizar una avería en ${titulo}. Usa el historial del proyecto para identificar posibles causas y soluciones.`,
+    accesorios: `Quiero añadir accesorios a ${titulo}. Usa el historial del proyecto para proponer accesorios compatibles.`,
+}[accion]);
 
 const tiempoRelativo = (fechaStr) => {
     if (!fechaStr) return "";
@@ -33,19 +57,33 @@ export const Proyecto = () => {
     const [cargando, setCargando] = useState(true);
     const [pestanaActiva, setPestanaActiva] = useState("resumen");
     const [nota, setNota] = useState("");
+    const [accionAbierta, setAccionAbierta] = useState(false);
 
     useEffect(() => {
         if (!token) { navigate("/login"); return; }
-        Promise.all([
-            fetch(`${import.meta.env.VITE_BACKEND_URL}/api/conversations/${id}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            }).then(r => r.json()),
-        ]).then(([data]) => {
-            setProyecto(data);
-            setMensajes(data.messages || []);
-        }).catch(() => { })
+        fetch(`${import.meta.env.VITE_BACKEND_URL}/api/conversations/${id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+            .then(r => r.json())
+            .then(data => {
+                setProyecto(data);
+                setMensajes(data.messages || []);
+            })
+            .catch(() => { })
             .finally(() => setCargando(false));
     }, [id]);
+
+    const iniciarAccion = (accion) => {
+        setAccionAbierta(false);
+        const titulo = proyecto?.title || "este proyecto";
+        if (accion === "continuar") {
+            navigate(`/chat?conversation=${id}`);
+            return;
+        }
+        const contexto = contextoAccion(accion, titulo);
+        sessionStorage.setItem("gia_contexto_inicial", contexto);
+        navigate(`/chat?conversation=${id}`);
+    };
 
     if (cargando) return (
         <div className="bg-ivoire dark:bg-noche min-h-screen flex items-center justify-center">
@@ -65,14 +103,14 @@ export const Proyecto = () => {
 
                 {/* volver */}
                 <button
-                    onClick={() => navigate("/montajes")}
+                    onClick={() => navigate("/guias")}
                     className="flex items-center gap-1.5 text-xs text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire transition-colors mb-8"
                 >
                     <ArrowLeft size={13} strokeWidth={1.5} />
-                    Mis montajes
+                    Mis guías
                 </button>
 
-                {/* cabecera del proyecto */}
+                {/* cabecera */}
                 <div className="mb-6">
                     <h1 className="text-xl font-medium tracking-tight text-noyer dark:text-mantequilla mb-1">
                         {proyecto.title || "Sin título"}
@@ -90,26 +128,45 @@ export const Proyecto = () => {
                     </div>
                 </div>
 
-                {/* botón ir al chat */}
-                <button
-                    onClick={() => navigate(`/chat?conversation=${id}`)}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-deep-ocean dark:bg-noche-suave border border-deep-ocean/10 dark:border-noche-borde hover:opacity-90 transition-all group mb-6"
-                >
-                    <div className="flex items-center gap-3">
-                        <MessageSquare size={16} strokeWidth={1.5} className="text-ivoire dark:text-sky" />
+                {/* bloque trabajar sobre este proyecto */}
+                <div className="mb-6">
+                    <button
+                        onClick={() => setAccionAbierta(!accionAbierta)}
+                        className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-deep-ocean dark:bg-noche-suave border border-deep-ocean/10 dark:border-noche-borde hover:opacity-90 transition-all group"
+                    >
                         <span className="text-sm font-medium text-ivoire dark:text-ivoire">
-                            Continuar con GIA
+                            Trabajar sobre este proyecto
                         </span>
-                    </div>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="text-ivoire/40 group-hover:translate-x-0.5 transition-transform">
-                        <path d="M5 12h14M12 5l7 7-7 7" />
-                    </svg>
-                </button>
+                        <ChevronDown
+                            size={14}
+                            strokeWidth={1.5}
+                            className={`text-ivoire/60 transition-transform duration-200 ${accionAbierta ? "rotate-180" : ""}`}
+                        />
+                    </button>
+
+                    {/* selector de acción */}
+                    {accionAbierta && (
+                        <div className="mt-1 rounded-xl border border-douche dark:border-noche-borde bg-white dark:bg-noche-suave overflow-hidden">
+                            {ACCIONES_PROYECTO.map((accion, i) => (
+                                <button
+                                    key={accion.id}
+                                    onClick={() => iniciarAccion(accion.id)}
+                                    className={`w-full text-left px-4 py-3 text-sm text-deep-ocean dark:text-ivoire hover:bg-douche/40 dark:hover:bg-white/5 transition ${i !== ACCIONES_PROYECTO.length - 1
+                                        ? "border-b border-douche dark:border-noche-borde"
+                                        : ""
+                                        }`}
+                                >
+                                    {accion.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
 
                 <div className="border-t border-douche dark:border-noche-borde mb-6" />
 
                 {/* pestañas */}
-                <div className="flex gap-1 mb-6 overflow-x-auto">
+                <div className="flex gap-1 mb-6 overflow-x-auto pb-1">
                     {PESTANAS.map(({ id: pid, label, icono: Icono }) => (
                         <button
                             key={pid}
@@ -150,7 +207,7 @@ export const Proyecto = () => {
                         {proyecto.last_message && (
                             <div className="p-4 rounded-xl bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde">
                                 <p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-2">
-                                    Último mensaje
+                                    Último mensaje de GIA
                                 </p>
                                 <p className="text-xs text-gris-piedra leading-relaxed line-clamp-3">
                                     {proyecto.last_message}
@@ -216,7 +273,7 @@ export const Proyecto = () => {
                             className="w-full px-4 py-3 rounded-xl border border-douche dark:border-noche-borde bg-white dark:bg-noche-suave text-deep-ocean dark:text-ivoire placeholder:text-gris-piedra/40 text-sm outline-none focus:border-deep-ocean/40 dark:focus:border-sky/40 transition resize-none"
                         />
                         <p className="text-[10px] text-gris-piedra/50 mt-2">
-                            Las notas se guardarán en el backend próximamente.
+                            Las notas se guardarán próximamente.
                         </p>
                     </div>
                 )}

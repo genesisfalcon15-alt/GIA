@@ -1,19 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-	FileText, Camera, Hammer, Wrench, Sofa,
+	Camera, Hammer, Wrench, Sofa,
 	ChevronRight
 } from "lucide-react";
 
 const ACCIONES = [
-	{
-		id: "manual",
-		label: "Analizar un manual",
-		descripcion: "Interpreta un PDF paso a paso",
-		icono: FileText,
-		tipo: "contexto",
-		contexto: "Quiero analizar un manual de montaje"
-	},
 	{
 		id: "foto",
 		label: "Subir una imagen",
@@ -99,7 +91,6 @@ export const Home = () => {
 		<div className="bg-ivoire dark:bg-noche">
 			<div className="max-w-2xl mx-auto px-8 pt-10 pb-16">
 
-				{/* cabecera centrada */}
 				<div className="mb-8 text-center">
 					<p className="text-[9px] font-semibold tracking-[0.20em] uppercase text-gris-piedra mb-3">
 						{fechaHoy()}
@@ -114,7 +105,6 @@ export const Home = () => {
 
 				<div className="border-t border-douche dark:border-noche-borde mb-6" />
 
-				{/* proyecto activo */}
 				{!cargando && proyectoActivo && (
 					<>
 						<div className="mb-6">
@@ -150,7 +140,6 @@ export const Home = () => {
 					</>
 				)}
 
-				{/* nuevo proyecto */}
 				<div className="flex justify-center mb-2">
 					<button
 						onClick={() => navigate("/nuevo-proyecto")}
@@ -174,7 +163,6 @@ export const Home = () => {
 					</button>
 				</div>
 
-				{/* acciones rápidas */}
 				<div className="mb-8">
 					<p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-3 mt-6">
 						Acciones rápidas
@@ -201,7 +189,7 @@ export const Home = () => {
 						})}
 					</div>
 
-					<div className="grid grid-cols-2 gap-2 mb-2">
+					<div className="grid grid-cols-2 gap-2">
 						{ACCIONES.slice(2, 4).map((accion) => {
 							const Icono = accion.icono;
 							return (
@@ -220,22 +208,6 @@ export const Home = () => {
 								</button>
 							);
 						})}
-					</div>
-
-					<div className="flex justify-center">
-						<button
-							onClick={() => iniciarAccion(ACCIONES[4])}
-							style={{ width: "calc(50% - 4px)" }}
-							className="flex flex-col items-start p-5 rounded-xl bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde hover:border-deep-ocean/20 dark:hover:border-sky/20 hover:bg-douche/10 dark:hover:bg-noche-borde transition-all group text-left"
-						>
-							<Sofa size={32} strokeWidth={1} className="text-noyer dark:text-mantequilla group-hover:text-deep-ocean dark:group-hover:text-sky transition-colors mb-4" />
-							<p className="text-sm font-medium text-noyer dark:text-mantequilla leading-tight mb-1">
-								{ACCIONES[4].label}
-							</p>
-							<p className="text-[11px] text-gris-piedra leading-snug">
-								{ACCIONES[4].descripcion}
-							</p>
-						</button>
 					</div>
 				</div>
 

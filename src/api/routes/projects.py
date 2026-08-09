@@ -26,7 +26,6 @@ def get_project(project_id):
     if project.user_id != user_id:
         raise APIException("no tienes permiso", status_code=403)
 
-    # serializo con toda la info
     data = project.serialize()
     data['timeline'] = [t.serialize() for t in project.timeline]
     data['notes'] = [n.serialize() for n in project.notes]
@@ -48,7 +47,6 @@ def update_project(project_id):
 
     body = request.get_json()
 
-    # solo actualizo los campos que llegan
     if 'status' in body:
         project.status = body['status']
     if 'category' in body:
@@ -147,3 +145,32 @@ def delete_note(project_id, note_id):
     db.session.delete(note)
     db.session.commit()
     return jsonify({"message": "nota eliminada"}), 200
+
+
+@projects_bp.route('/<int:project_id>/step', methods=['PATCH'])
+@jwt_required()
+def update_step(project_id):
+    """actualiza el paso actual del montaje en extra_data"""
+    user_id = int(get_jwt_identity())
+    project = Project.query.get(project_id)
+    if not project or project.user_id != user_id:
+        raise APIException("no autorizado", status_code=403)
+
+    body = request.get_json()
+    current_step = body.get("current_step")
+    total_steps = body.get("total_steps")
+
+    # guardo en extra_data sin necesitar migración
+    extra = project.extra_data or {}
+    if current_step is not None:
+        extra["current_step"] = current_step
+    if total_steps is not None:
+        extra["total_steps"] = total_steps
+    project.extra_data = extra
+
+    # actualizo progreso como porcentaje
+    if current_step and total_steps:
+        project.progress = round((current_step / total_steps) * 100)
+
+    db.session.commit()
+    return jsonify(project.serialize()), 200

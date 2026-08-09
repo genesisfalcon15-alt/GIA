@@ -23,6 +23,7 @@ export const Chat = () => {
     const [escuchando, setEscuchando] = useState(false);
     const [pasoActual, setPasoActual] = useState(0);
     const [totalPasos, setTotalPasos] = useState(0);
+    const [confirmacionVisible, setConfirmacionVisible] = useState(false);
 
     const token = localStorage.getItem("token");
 
@@ -34,6 +35,8 @@ export const Chat = () => {
             if (match[2]) setTotalPasos(parseInt(match[2]));
             else if (totalPasos === 0) setTotalPasos(12);
         }
+        const terminado = /completado|finalizado|terminado|listo para usar|montaje completo/i.test(contenido);
+        if (terminado) setConfirmacionVisible(true);
     };
 
     const cargarConversaciones = async () => {
@@ -57,6 +60,7 @@ export const Chat = () => {
         setCargando(true);
         setPasoActual(0);
         setTotalPasos(0);
+        setConfirmacionVisible(false);
         try {
             const response = await fetch(
                 `${import.meta.env.VITE_BACKEND_URL}/api/conversations/${id}`,
@@ -89,6 +93,7 @@ export const Chat = () => {
                 setMensajes([]);
                 setPasoActual(0);
                 setTotalPasos(0);
+                setConfirmacionVisible(false);
             }
             cargarConversaciones();
         } catch (err) {
@@ -105,6 +110,7 @@ export const Chat = () => {
         setSidebarAbierto(false);
         setPasoActual(0);
         setTotalPasos(0);
+        setConfirmacionVisible(false);
     };
 
     const enviarMensaje = async () => {
@@ -128,7 +134,8 @@ export const Chat = () => {
                     },
                     body: JSON.stringify({
                         conversation_id: conversacionActiva,
-                        message: texto
+                        message: texto,
+                        current_time: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
                     })
                 }
             );
@@ -163,7 +170,11 @@ export const Chat = () => {
                 const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/chat`, {
                     method: "POST",
                     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ conversation_id: null, message: `He subido el manual: ${archivo.name}` })
+                    body: JSON.stringify({
+                        conversation_id: null,
+                        message: `He subido el manual: ${archivo.name}`,
+                        current_time: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
+                    })
                 });
                 const data = await res.json();
                 projectId = data.conversation_id;
@@ -210,35 +221,50 @@ export const Chat = () => {
         }
     };
 
-    // sube una imagen al chat para que GIA la analice
     const subirImagen = async (e) => {
         const archivo = e.target.files[0];
         if (!archivo) return;
         setSubiendoImagen(true);
+        setCargando(true);
+
+        const urlLocal = URL.createObjectURL(archivo);
         setMensajes(prev => [...prev, {
             role: "user",
-            content: "He enviado una fotografía para que la analices.",
+            content: `[imagen:${urlLocal}]`,
             created_at: new Date().toISOString()
         }]);
-        setCargando(true);
+
         try {
+            const formData = new FormData();
+            formData.append("image", archivo);
+            if (conversacionActiva) {
+                formData.append("conversation_id", conversacionActiva);
+            }
+
             const response = await fetch(
-                `${import.meta.env.VITE_BACKEND_URL}/api/chat`,
+                `${import.meta.env.VITE_BACKEND_URL}/api/chat/image`,
                 {
                     method: "POST",
-                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        conversation_id: conversacionActiva,
-                        message: "He enviado una fotografía. Analízala: identifica qué es, su estado, daños visibles, errores de montaje, piezas faltantes y si se puede reparar."
-                    })
+                    headers: { "Authorization": `Bearer ${token}` },
+                    body: formData
                 }
             );
+
             const data = await response.json();
-            if (data.message && data.message.role) setMensajes(prev => [...prev, data.message]);
-            if (!conversacionActiva && data.conversation_id) setConversacionActiva(data.conversation_id);
+            if (data.message && data.message.role) {
+                setMensajes(prev => [...prev, data.message]);
+            }
+            if (!conversacionActiva && data.conversation_id) {
+                setConversacionActiva(data.conversation_id);
+            }
             cargarConversaciones();
         } catch (err) {
             console.error("error enviando imagen:", err);
+            setMensajes(prev => [...prev, {
+                role: "assistant",
+                content: "No pude analizar la imagen. Inténtalo de nuevo.",
+                created_at: new Date().toISOString()
+            }]);
         } finally {
             setCargando(false);
             setSubiendoImagen(false);
@@ -246,7 +272,6 @@ export const Chat = () => {
         }
     };
 
-    // dictado de voz con Web Speech API — funciona en Chrome y Safari
     const iniciarVoz = () => {
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
             alert("Tu navegador no soporta dictado de voz. Usa Chrome.");
@@ -266,6 +291,29 @@ export const Chat = () => {
         };
         recognition.onerror = () => setEscuchando(false);
         recognition.onend = () => setEscuchando(false);
+    };
+
+    const confirmarProyecto = async (completado) => {
+        setConfirmacionVisible(false);
+        if (!conversacionActiva) return;
+        try {
+            await fetch(
+                `${import.meta.env.VITE_BACKEND_URL}/api/conversations/${conversacionActiva}`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Authorization": `Bearer ${token}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        status: completado ? "completado" : "pendiente_confirmar"
+                    })
+                }
+            );
+            cargarConversaciones();
+        } catch (err) {
+            console.error("error actualizando estado:", err);
+        }
     };
 
     const handleKeyDown = (e) => {
@@ -303,7 +351,11 @@ export const Chat = () => {
                         {
                             method: "POST",
                             headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-                            body: JSON.stringify({ conversation_id: null, message: contextoInicial })
+                            body: JSON.stringify({
+                                conversation_id: null,
+                                message: contextoInicial,
+                                current_time: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
+                            })
                         }
                     );
                     const data = await response.json();
@@ -340,7 +392,6 @@ export const Chat = () => {
                 <div className="fixed inset-0 bg-black/40 z-20 md:hidden" onClick={() => setSidebarAbierto(false)} />
             )}
 
-            {/* SIDEBAR */}
             <aside className={`
                 fixed md:relative z-30 md:z-auto h-full w-64 flex-shrink-0
                 bg-white dark:bg-noche-suave border-r border-douche dark:border-noche-borde
@@ -400,10 +451,8 @@ export const Chat = () => {
                 </div>
             </aside>
 
-            {/* ÁREA PRINCIPAL */}
             <main className="flex-1 flex flex-col min-w-0 h-full">
 
-                {/* barra superior móvil */}
                 <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-douche dark:border-noche-borde bg-white dark:bg-noche-suave">
                     <button onClick={() => setSidebarAbierto(true)} className="text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire transition">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -413,11 +462,9 @@ export const Chat = () => {
                     <LogoGia size={24} />
                 </div>
 
-                {/* barra de progreso */}
                 {totalPasos > 0 && (
                     <div className="px-6 py-2.5 border-b border-douche dark:border-noche-borde bg-white dark:bg-noche-suave">
                         <div className="max-w-2xl mx-auto flex items-center gap-4">
-                            {/* icono timer — solo visible cuando hay progreso */}
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-noyer dark:text-mantequilla flex-shrink-0">
                                 <circle cx="12" cy="12" r="10" />
                                 <polyline points="12 6 12 12 16 14" />
@@ -442,7 +489,30 @@ export const Chat = () => {
                     </div>
                 )}
 
-                {/* mensajes */}
+                {confirmacionVisible && conversacionActiva && (
+                    <div className="px-6 py-3 border-b border-douche dark:border-noche-borde bg-white dark:bg-noche-suave">
+                        <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
+                            <p className="text-xs text-noyer dark:text-mantequilla">
+                                ¿Has completado este proyecto correctamente?
+                            </p>
+                            <div className="flex gap-2 flex-shrink-0">
+                                <button
+                                    onClick={() => confirmarProyecto(true)}
+                                    className="px-3 py-1.5 rounded-lg bg-deep-ocean dark:bg-sky text-ivoire dark:text-noche text-xs font-medium hover:opacity-90 transition"
+                                >
+                                    Sí, completado
+                                </button>
+                                <button
+                                    onClick={() => confirmarProyecto(false)}
+                                    className="px-3 py-1.5 rounded-lg border border-douche dark:border-noche-borde text-gris-piedra text-xs hover:text-deep-ocean dark:hover:text-ivoire transition"
+                                >
+                                    Pendiente
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex-1 overflow-y-auto">
                     {mensajes.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center px-6 text-center">
@@ -456,7 +526,15 @@ export const Chat = () => {
                             {mensajes.map((msg, index) => (
                                 <div key={index} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
                                     <div className={`max-w-[78%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === "user" ? "bg-deep-ocean text-ivoire dark:bg-sky dark:text-noche rounded-br-sm" : "bg-white dark:bg-noche-suave text-deep-ocean dark:text-ivoire border border-douche dark:border-noche-borde rounded-bl-sm"}`}>
-                                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                        {msg.content.startsWith("[imagen:") ? (
+                                            <img
+                                                src={msg.content.replace("[imagen:", "").replace("]", "")}
+                                                alt="imagen enviada"
+                                                className="max-w-full rounded-lg max-h-48 object-cover"
+                                            />
+                                        ) : (
+                                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                        )}
                                     </div>
                                     <span className="text-[10px] text-gris-piedra/60 mt-1 px-1">{formatHora(msg.created_at)}</span>
                                 </div>
@@ -477,16 +555,13 @@ export const Chat = () => {
                     )}
                 </div>
 
-                {/* INPUT */}
                 <div className="border-t border-douche dark:border-noche-borde bg-white dark:bg-noche-suave px-4 py-3">
                     <div className="max-w-2xl mx-auto">
                         <div className="flex gap-2 items-end">
 
-                            {/* inputs ocultos */}
                             <input ref={fileInputRef} type="file" accept=".pdf" onChange={subirPDF} className="hidden" />
                             <input ref={imgInputRef} type="file" accept="image/*" capture="environment" onChange={subirImagen} className="hidden" />
 
-                            {/* PDF */}
                             <button
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={subiendoPDF || cargando}
@@ -505,7 +580,6 @@ export const Chat = () => {
                                 )}
                             </button>
 
-                            {/* Cámara */}
                             <button
                                 onClick={() => imgInputRef.current?.click()}
                                 disabled={subiendoImagen || cargando}
@@ -522,7 +596,6 @@ export const Chat = () => {
                                 )}
                             </button>
 
-                            {/* Micrófono */}
                             <button
                                 onClick={iniciarVoz}
                                 disabled={cargando}
@@ -540,7 +613,6 @@ export const Chat = () => {
                                 </svg>
                             </button>
 
-                            {/* textarea */}
                             <textarea
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
@@ -550,7 +622,6 @@ export const Chat = () => {
                                 className="flex-1 resize-none px-3.5 py-2.5 rounded-lg border border-douche dark:border-noche-borde bg-ivoire dark:bg-noche text-deep-ocean dark:text-ivoire placeholder:text-gris-piedra text-sm outline-none focus:border-deep-ocean/40 dark:focus:border-sky/40 transition max-h-32 overflow-y-auto"
                             />
 
-                            {/* enviar */}
                             <button
                                 onClick={enviarMensaje}
                                 disabled={!input.trim() || cargando}
