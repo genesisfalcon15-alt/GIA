@@ -21,7 +21,8 @@ export const Montajes = () => {
 
     useEffect(() => {
         if (!token) { navigate("/login"); return; }
-        fetch(`${import.meta.env.VITE_BACKEND_URL}/api/conversations`, {
+        // solo proyectos de trabajo — excluye guías
+        fetch(`${import.meta.env.VITE_BACKEND_URL}/api/conversations?type=montaje`, {
             headers: { "Authorization": `Bearer ${token}` }
         })
             .then(r => r.json())
@@ -34,16 +35,15 @@ export const Montajes = () => {
         <div className="min-h-screen bg-ivoire dark:bg-noche">
             <div className="max-w-xl mx-auto px-6 pt-14 pb-24">
 
-                {/* cabecera */}
                 <div className="mb-8">
                     <p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-1">
-                        Biblioteca personal
+                        Proyectos de trabajo
                     </p>
                     <h1 className="text-xl font-medium tracking-tight text-noyer dark:text-mantequilla">
                         Mis montajes
                     </h1>
                     <p className="text-sm text-gris-piedra mt-0.5">
-                        Todos tus proyectos en un solo lugar.
+                        Todo lo que estás montando, instalando o reparando.
                     </p>
                 </div>
 
@@ -76,6 +76,11 @@ export const Montajes = () => {
                                         {conv.title || "Sin título"}
                                     </p>
                                     <div className="flex items-center gap-3">
+                                        {conv.status && conv.status !== "en_progreso" && (
+                                            <span className="text-[10px] font-medium text-deep-ocean dark:text-sky capitalize">
+                                                {conv.status.replace(/_/g, " ")}
+                                            </span>
+                                        )}
                                         {conv.has_manual && (
                                             <span className="text-[10px] font-medium text-noyer dark:text-mantequilla">
                                                 Manual

@@ -4,7 +4,6 @@ from api.models import db, Project, ProjectTimeline
 from api.utils import APIException
 from datetime import datetime
 
-# blueprint de conversaciones, gestiona el historial del sidebar
 conversations_bp = Blueprint('conversations', __name__)
 
 
@@ -12,14 +11,27 @@ conversations_bp = Blueprint('conversations', __name__)
 @jwt_required()
 def get_conversations():
     """
-    devuelve todas las conversaciones del usuario autenticado
-    ordenadas por la mas reciente primero, para el sidebar
+    devuelve conversaciones del usuario.
+    ?type=guia → solo guías (category = 'guia')
+    ?type=montaje → solo montajes (category IS NULL OR category != 'guia')
+    sin parámetro → todas
     """
     user_id = int(get_jwt_identity())
+    tipo = request.args.get('type', None)
 
-    conversaciones = Project.query.filter_by(
-        user_id=user_id
-    ).order_by(Project.updated_at.desc()).all()
+    query = Project.query.filter_by(user_id=user_id)
+
+    if tipo == 'guia':
+        query = query.filter(Project.category == 'guia')
+    elif tipo == 'montaje':
+        query = query.filter(
+            db.or_(
+                Project.category == None,
+                Project.category != 'guia'
+            )
+        )
+
+    conversaciones = query.order_by(Project.updated_at.desc()).all()
 
     return jsonify({
         "items": [c.serialize() for c in conversaciones],
@@ -30,9 +42,7 @@ def get_conversations():
 @conversations_bp.route('/<int:conversation_id>', methods=['GET'])
 @jwt_required()
 def get_conversation(conversation_id):
-    """
-    devuelve una conversacion completa con todos sus mensajes
-    """
+    """devuelve una conversacion completa con todos sus mensajes"""
     user_id = int(get_jwt_identity())
 
     conversacion = Project.query.get(conversation_id)
@@ -54,33 +64,35 @@ def get_conversation(conversation_id):
             "created_at": entrada.created_at.isoformat()
         })
 
-    manual = None
-    if conversacion.manuals:
-        m = conversacion.manuals[0]
-        manual = {
+    # incluyo todos los manuales del proyecto
+    manuales = []
+    for m in conversacion.manuals:
+        manuales.append({
             "id": m.id,
             "filename": m.original_filename,
             "status": m.status,
-            "total_chunks": m.total_chunks
-        }
+            "total_chunks": m.total_chunks,
+            "file_url": m.file_url,
+            "created_at": m.created_at.isoformat()
+        })
 
     return jsonify({
         "id": conversacion.id,
         "title": conversacion.title or "Nueva conversación",
         "status": conversacion.status,
+        "category": conversacion.category,
         "created_at": conversacion.created_at.isoformat(),
         "messages": mensajes,
-        "manual": manual
+        "manual": manuales[0] if manuales else None,
+        "manuales": manuales,
+        "has_manual": len(manuales) > 0
     }), 200
 
 
 @conversations_bp.route('/<int:conversation_id>', methods=['PATCH'])
 @jwt_required()
 def update_conversation_status(conversation_id):
-    """
-    actualiza el status del proyecto — completado, pendiente_confirmar, etc.
-    nunca borra datos, solo cambia el estado
-    """
+    """actualiza status y/o category del proyecto — nunca borra datos"""
     user_id = int(get_jwt_identity())
 
     conversacion = Project.query.get(conversation_id)
@@ -93,7 +105,6 @@ def update_conversation_status(conversation_id):
     if not body:
         raise APIException("faltan datos", status_code=400)
 
-    # estados permitidos
     estados_validos = [
         "en_progreso", "pendiente_confirmar", "completado",
         "pausado", "instalado", "reparado", "restaurado",
@@ -109,7 +120,14 @@ def update_conversation_status(conversation_id):
     if nuevo_status:
         conversacion.status = nuevo_status
 
-    # registra el cambio en el timeline automáticamente
+    # permite marcar un proyecto como guía o volver a montaje
+    if "category" in body:
+        categorias_validas = ["guia", "montaje", "instalacion", "reparacion", "restauracion"]
+        nueva_categoria = body.get("category")
+        if nueva_categoria is not None and nueva_categoria not in categorias_validas:
+            raise APIException(f"categoría no válida: {nueva_categoria}", status_code=400)
+        conversacion.category = nueva_categoria
+
     if nuevo_status and nuevo_status != status_anterior:
         evento = ProjectTimeline()
         evento.project_id = conversacion.id
@@ -123,16 +141,15 @@ def update_conversation_status(conversation_id):
     return jsonify({
         "id": conversacion.id,
         "status": conversacion.status,
-        "message": "estado actualizado"
+        "category": conversacion.category,
+        "message": "actualizado"
     }), 200
 
 
 @conversations_bp.route('/<int:conversation_id>', methods=['DELETE'])
 @jwt_required()
 def delete_conversation(conversation_id):
-    """
-    borra una conversacion completa con todos sus mensajes y manual
-    """
+    """borra una conversacion completa"""
     user_id = int(get_jwt_identity())
 
     conversacion = Project.query.get(conversation_id)

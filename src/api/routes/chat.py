@@ -3,7 +3,7 @@ import cloudinary.uploader
 import os
 from flask import request, jsonify, Blueprint
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from api.models import db, Project, ChatHistory
+from api.models import db, Project, ChatHistory, ProjectTimeline, ProjectPhoto
 from api.utils import APIException
 from api.groq_service import send_message as groq_send
 from api.image_service import analyze_image
@@ -19,6 +19,19 @@ cloudinary.config(
 )
 
 chat_bp = Blueprint('chat', __name__)
+
+
+def registrar_timeline(project_id, evento, tipo="info"):
+    """añade un evento al timeline del proyecto de forma segura"""
+    try:
+        entry = ProjectTimeline(
+            project_id=project_id,
+            evento=evento,
+            tipo=tipo
+        )
+        db.session.add(entry)
+    except Exception as e:
+        print(f"=== TIMELINE: error registrando evento — {e} ===")
 
 
 @chat_bp.route('', methods=['POST'])
@@ -70,7 +83,6 @@ def send_message():
         historial.append({"role": "user", "content": entrada.user_message})
         historial.append({"role": "assistant", "content": entrada.gia_response})
 
-    # mando el mensaje con la hora para que groq la conozca
     historial.append({"role": "user", "content": user_message_con_hora})
 
     contexto = construir_contexto_conversacion(
@@ -94,6 +106,12 @@ def send_message():
 
     if es_primer_mensaje and resultado.get("title"):
         project.title = resultado["title"]
+        # registro inicio del proyecto en el timeline
+        registrar_timeline(
+            project.id,
+            f"Proyecto iniciado: {project.title}",
+            tipo="hito"
+        )
 
     # guardo el mensaje original sin la hora en el historial
     chat_entry = ChatHistory(
@@ -105,6 +123,33 @@ def send_message():
     )
 
     db.session.add(chat_entry)
+
+    # detecto si gia menciona un paso y lo registro en el timeline
+    import re
+    match_paso = re.search(r'paso\s+(\d+)\s+de\s+(\d+)', gia_response, re.IGNORECASE)
+    if match_paso:
+        paso_actual = match_paso.group(1)
+        total_pasos = match_paso.group(2)
+        registrar_timeline(
+            project.id,
+            f"Paso {paso_actual} de {total_pasos}",
+            tipo="montaje"
+        )
+        # actualizo progreso en extra_data
+        extra = project.extra_data or {}
+        extra["current_step"] = int(paso_actual)
+        extra["total_steps"] = int(total_pasos)
+        project.extra_data = extra
+        project.progress = round((int(paso_actual) / int(total_pasos)) * 100)
+
+    # detecto si el proyecto se completó
+    if re.search(r'completado|finalizado|terminado|montaje completo|listo para usar', gia_response, re.IGNORECASE):
+        registrar_timeline(
+            project.id,
+            "Proyecto marcado como completado por GIA",
+            tipo="completado"
+        )
+
     db.session.commit()
 
     return jsonify({
@@ -166,8 +211,18 @@ def send_image():
         )
         image_url = upload_response['secure_url']
         print(f"=== IMAGEN: subida a cloudinary → {image_url} ===")
+
+        # guardo la foto en ProjectPhoto para que aparezca en el expediente del proyecto
+        foto_proyecto = ProjectPhoto(
+            project_id=project.id,
+            url=image_url,
+            caption="Foto enviada en chat"
+        )
+        db.session.add(foto_proyecto)
+
     except Exception as err:
         raise APIException(f"error subiendo imagen a cloudinary: {str(err)}", status_code=500)
+
 
     project_context = None
     if project.title:
@@ -185,6 +240,13 @@ def send_image():
     es_primera = len(project.chat_history) == 0
     if es_primera and not project.title:
         project.title = "Análisis de imagen"
+
+    # registro la foto en el timeline
+    registrar_timeline(
+        project.id,
+        "Fotografía enviada para análisis visual",
+        tipo="info"
+    )
 
     chat_entry = ChatHistory(
         project_id=project.id,

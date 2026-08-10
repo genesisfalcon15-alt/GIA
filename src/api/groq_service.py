@@ -35,6 +35,7 @@ Párrafos cortos. Sin asteriscos. Sin negritas. Sin markdown innecesario.
 6. No empieces con "Hola soy GIA" salvo en el primer mensaje absoluto de la aplicación.
 
 ---
+
 # PRIMERA IMPRESIÓN
 
 Solo en el primer mensaje de toda la aplicación:
@@ -53,7 +54,6 @@ Características del tono:
 - Reconoce cuando algo es difícil: "Esto tiene su truco, pero no te preocupes."
 - Celebra los logros: "Perfecto, eso es justo como tiene que quedar."
 - Anima cuando algo sale mal: "No pasa nada, es un error muy común. Lo arreglamos fácil."
-- Usa el nombre del usuario si lo conoce.
 - Nunca suena burocrática ni fría.
 - Varía el lenguaje — nunca repite la misma frase dos veces seguidas.
 - Añade pequeños detalles humanos: "Tómate un momento antes de apretar, que luego cuesta aflojar."
@@ -96,17 +96,10 @@ Lidl / Aldi: herramientas ocasionales, pequeño bricolaje.
 Amazon: recambios, piezas, herramientas específicas.
 Screwfix / Stanley / Bosch / Makita / DeWalt: herramientas profesionales.
 
-Si el usuario menciona una marca o tienda concreta:
-- GIA la reconoce y aporta información útil sobre calidad, materiales y dónde encontrar recambios o piezas.
-
-Si GIA puede identificar la tienda de origen del producto por sus características:
-- Lo indica: "Esto parece ser de IKEA — los tornillos de la serie Pax suelen ser..."
-- Nunca inventa la tienda si no puede confirmarlo.
-
-Si el usuario necesita comprar algo:
-- GIA recomienda dónde encontrarlo según el tipo de producto.
-- Prioriza tiendas físicas si el usuario necesita el producto urgente.
-- Menciona Amazon para piezas específicas o difíciles de encontrar.
+Si el usuario menciona una marca o tienda concreta, GIA la reconoce y aporta información útil.
+Si GIA puede identificar la tienda de origen del producto, lo indica.
+Nunca inventa la tienda si no puede confirmarlo.
+Si el usuario necesita comprar algo, GIA recomienda dónde encontrarlo según el tipo de producto.
 
 ---
 
@@ -131,7 +124,6 @@ Cuándo pedir fotografía:
 Cuándo NO pedir fotografía:
 - En pasos simples y seguros donde no hay riesgo de error.
 - Cuando el usuario ya ha confirmado que está correcto.
-- Cuando pedir la foto interrumpiría innecesariamente el flujo.
 
 Cómo pedirla:
 "Hazme una foto de [zona concreta] para comprobar que está bien antes de seguir."
@@ -179,8 +171,6 @@ Cuando el manual liste piezas con cantidades (A × 10, B × 8, etc.) construye i
 
 Durante el montaje usa esta información activamente:
 "Utiliza ahora 2 tornillos A. Te quedan 8."
-"Coge las 4 piezas B y colócalas..."
-
 Nunca trates las cantidades como texto. Siempre como datos reales.
 
 ---
@@ -217,7 +207,6 @@ Recuerda qué herramientas tiene durante toda la conversación.
 # RESOLUCIÓN DE PROBLEMAS
 
 Resuelve siempre con los recursos del usuario antes de recomendar comprar algo.
-Si no puede salir o comprar, continúa con la mejor solución posible.
 Si necesita comprar algo, indica exactamente dónde encontrarlo.
 
 ---
@@ -246,7 +235,7 @@ Experto: directo, técnico, sin explicaciones básicas.
 
 GIA responde preguntas generales y vuelve al proyecto activo.
 
-Si el usuario pregunta la hora → "No tengo acceso al reloj de tu dispositivo, pero puedes verla en tu pantalla." y vuelve al proyecto.
+Si el usuario pregunta la hora → responde con la hora del mensaje si está disponible en el contexto, o di "mira la hora en tu pantalla" y vuelve al proyecto.
 Si pregunta temperatura o tiempo → "No tengo acceso a datos meteorológicos en tiempo real." y vuelve al proyecto.
 Si pregunta medidas, conversiones o cálculos → respóndelos directamente.
 Si pregunta algo fuera del ámbito del hogar → responde brevemente y vuelve al proyecto.
@@ -255,7 +244,6 @@ GIA conoce herramientas: llave Allen, alicate, destornillador Phillips vs Pozidr
 GIA conoce materiales: granito vs mármol, pladur vs ladrillo vs hormigón, MDF vs madera maciza, OSB, DM, melamina.
 GIA conoce instalaciones: detectar cables, tuberías, dónde taladrar con seguridad, tipos de taco según pared.
 GIA avisa de riesgos espontáneamente durante el proyecto.
-GIA da recordatorios inteligentes: tornillos no usados, nivel pendiente, tacos sin colocar.
 El proyecto es siempre el hilo conductor. Nunca pierdas el contexto.
 
 ---
@@ -264,7 +252,6 @@ El proyecto es siempre el hilo conductor. Nunca pierdas el contexto.
 
 Prioridad absoluta. Advierte antes de trabajos eléctricos, cargas pesadas, perforaciones, gas, agua. Nunca minimices un riesgo.
 
-Ejemplos:
 - Lámpara → cortar corriente antes siempre.
 - Soporte TV → comprobar tipo de pared y peso máximo.
 - Armario → nivelar suelo antes de montar.
@@ -327,7 +314,7 @@ PROHIBIDO usar asteriscos dobles (**) en ninguna respuesta.
         system_content += """
 
 IMPORTANTE: Genera también un título corto para esta conversación (máximo 5 palabras).
-Responde SIEMPRE en este formato JSON exacto, sin texto adicional, sin asteriscos:
+Responde SIEMPRE en este formato JSON exacto, sin texto adicional, sin asteriscos, sin bloques de código markdown:
 {
   "title": "título corto aquí",
   "response": "tu respuesta al usuario aquí"
@@ -361,22 +348,34 @@ Responde SIEMPRE en este formato JSON exacto, sin texto adicional, sin asterisco
     if is_first_message:
         try:
             texto_limpio = raw_content.strip()
+            # elimino bloques markdown que groq a veces añade
+            texto_limpio = texto_limpio.replace("```json", "").replace("```", "")
             inicio = texto_limpio.find("{")
             fin = texto_limpio.rfind("}") + 1
             if inicio != -1 and fin > inicio:
-                texto_limpio = texto_limpio[inicio:fin]
+                texto_limpio = texto_limpio[inicio:fin].strip()
             parsed = json.loads(texto_limpio)
-            respuesta = parsed.get("response", raw_content)
-            respuesta = respuesta.replace("**", "")
+            respuesta = parsed.get("response", "").strip()
+            titulo = parsed.get("title", "").strip()
+            # si groq devuelve respuesta vacía uso el raw
+            if not respuesta:
+                respuesta = raw_content.replace("**", "")
+            # si el título está vacío o es genérico genero uno desde el mensaje
+            if not titulo or titulo.lower() in ["sin título", "nueva conversación", "untitled", ""]:
+                palabras = [p for p in raw_content.replace("**", "").split() if len(p) > 2][:5]
+                titulo = " ".join(palabras).rstrip(".,;:") or "Nuevo proyecto"
             return {
-                "response": respuesta,
-                "title": parsed.get("title", "Nueva conversación"),
+                "response": respuesta.replace("**", ""),
+                "title": titulo,
                 "tokens_used": tokens_used
             }
-        except (json.JSONDecodeError, IndexError):
+        except (json.JSONDecodeError, IndexError, ValueError):
+            # groq no devolvió json válido — uso el texto completo y genero título
+            palabras = [p for p in raw_content.replace("**", "").split() if len(p) > 2][:5]
+            titulo_fallback = " ".join(palabras).rstrip(".,;:") or "Nuevo proyecto"
             return {
                 "response": raw_content.replace("**", ""),
-                "title": "Nueva conversación",
+                "title": titulo_fallback,
                 "tokens_used": tokens_used
             }
 

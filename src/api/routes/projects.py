@@ -1,7 +1,16 @@
+import cloudinary
+import cloudinary.uploader
+import os
 from flask import jsonify, request, Blueprint
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from api.models import db, Project, ProjectTimeline, ProjectNote, ProjectPhoto
 from api.utils import APIException
+
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET")
+)
 
 projects_bp = Blueprint('projects', __name__)
 
@@ -160,7 +169,6 @@ def update_step(project_id):
     current_step = body.get("current_step")
     total_steps = body.get("total_steps")
 
-    # guardo en extra_data sin necesitar migración
     extra = project.extra_data or {}
     if current_step is not None:
         extra["current_step"] = current_step
@@ -168,9 +176,82 @@ def update_step(project_id):
         extra["total_steps"] = total_steps
     project.extra_data = extra
 
-    # actualizo progreso como porcentaje
     if current_step and total_steps:
         project.progress = round((current_step / total_steps) * 100)
 
     db.session.commit()
     return jsonify(project.serialize()), 200
+
+
+@projects_bp.route('/<int:project_id>/photos', methods=['GET'])
+@jwt_required()
+def get_photos(project_id):
+    """devuelve las fotos del proyecto"""
+    user_id = int(get_jwt_identity())
+    project = Project.query.get(project_id)
+    if not project or project.user_id != user_id:
+        raise APIException("no autorizado", status_code=403)
+
+    return jsonify([p.serialize() for p in project.photos]), 200
+
+
+@projects_bp.route('/<int:project_id>/photos', methods=['POST'])
+@jwt_required()
+def upload_photo(project_id):
+    """
+    sube una foto al proyecto y la guarda en cloudinary y en BD.
+    acepta jpg, jpeg, png, webp, heic.
+    """
+    user_id = int(get_jwt_identity())
+    project = Project.query.get(project_id)
+    if not project or project.user_id != user_id:
+        raise APIException("no autorizado", status_code=403)
+
+    if 'photo' not in request.files:
+        raise APIException("no llegó ninguna foto", status_code=400)
+
+    file = request.files['photo']
+    if file.filename == '':
+        raise APIException("el archivo está vacío", status_code=400)
+
+    caption = request.form.get('caption', '')
+
+    try:
+        file_content = file.read()
+        upload_response = cloudinary.uploader.upload(
+            file_content,
+            resource_type="image",
+            folder=f"gia/project_{project_id}/photos"
+        )
+        photo_url = upload_response['secure_url']
+        print(f"=== FOTO: subida a cloudinary → {photo_url} ===")
+    except Exception as err:
+        raise APIException(f"error subiendo foto a cloudinary: {str(err)}", status_code=500)
+
+    photo = ProjectPhoto(
+        project_id=project_id,
+        url=photo_url,
+        caption=caption or None
+    )
+    db.session.add(photo)
+    db.session.commit()
+
+    return jsonify(photo.serialize()), 201
+
+
+@projects_bp.route('/<int:project_id>/photos/<int:photo_id>', methods=['DELETE'])
+@jwt_required()
+def delete_photo(project_id, photo_id):
+    """elimina una foto del proyecto"""
+    user_id = int(get_jwt_identity())
+    project = Project.query.get(project_id)
+    if not project or project.user_id != user_id:
+        raise APIException("no autorizado", status_code=403)
+
+    photo = ProjectPhoto.query.get(photo_id)
+    if not photo or photo.project_id != project_id:
+        raise APIException("foto no encontrada", status_code=404)
+
+    db.session.delete(photo)
+    db.session.commit()
+    return jsonify({"message": "foto eliminada"}), 200

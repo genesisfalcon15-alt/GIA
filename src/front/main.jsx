@@ -8,13 +8,12 @@ import { BackendURL } from './components/BackendURL';
 
 // aplico el tema guardado antes de que react renderice
 // así no hay flash de modo claro al navegar a login/register
-const temaGuardado = localStorage.getItem("tema");
+const temaGuardado = localStorage.getItem("gia_tema");
 if (temaGuardado === "oscuro") {
     document.documentElement.classList.add("dark");
 } else if (temaGuardado === "claro") {
     document.documentElement.classList.remove("dark");
 } else {
-    // sin preferencia guardada, uso la del sistema
     if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
         document.documentElement.classList.add("dark");
     }

@@ -6,13 +6,13 @@ const PASOS_PARTICULAR = [
     {
         id: "experiencia",
         titulo: "¿Cuál es tu experiencia con el bricolaje?",
-        tipo: "radio",
+        tipo: "multi",
         opciones: ["Nunca he montado nada", "Principiante", "Intermedio", "Muy manitas"]
     },
     {
         id: "vivienda",
         titulo: "¿Dónde realizas tus proyectos?",
-        tipo: "radio",
+        tipo: "multi",
         opciones: ["Piso", "Casa", "Chalet", "Otro"],
         subtitulo: "¿Qué tipos de paredes tienes? Puedes elegir varias.",
         opciones2: ["Pladur", "Ladrillo", "Hormigón", "Piedra", "No lo sé"],
@@ -35,11 +35,11 @@ const PASOS_PARTICULAR = [
     {
         id: "estilo",
         titulo: "¿Cómo prefieres que GIA te explique las cosas?",
-        tipo: "radio",
+        tipo: "multi",
         opciones: ["Muy detalladamente", "Normal", "Solo lo importante", "Como un profesional"],
         subtitulo: "¿Cómo prefieres recibir la ayuda?",
         opciones2: ["Solo texto", "Texto con ejemplos", "Lo más visual posible", "Me da igual"],
-        tipo2: "radio"
+        tipo2: "multi"
     }
 ];
 
@@ -54,7 +54,7 @@ const PASOS_EMPRESA = [
     {
         id: "equipo",
         titulo: "¿Cuántas personas forman el equipo?",
-        tipo: "radio",
+        tipo: "multi",
         opciones: ["Solo yo", "2-5", "6-20", "Más de 20"]
     },
     {
@@ -74,10 +74,12 @@ const PASOS_EMPRESA = [
     {
         id: "modo",
         titulo: "¿Cómo quieres que GIA trabaje con vosotros?",
-        tipo: "radio",
+        tipo: "multi",
         opciones: ["Paso a paso", "Muy técnico", "Muy rápido", "Como apoyo al equipo"]
     }
 ];
+
+
 
 export const Onboarding = () => {
     const navigate = useNavigate();

@@ -222,55 +222,61 @@ export const Chat = () => {
     };
 
     const subirImagen = async (e) => {
-        const archivo = e.target.files[0];
-        if (!archivo) return;
-        setSubiendoImagen(true);
-        setCargando(true);
+        const archivos = Array.from(e.target.files);
+        if (!archivos.length) return;
 
-        const urlLocal = URL.createObjectURL(archivo);
-        setMensajes(prev => [...prev, {
-            role: "user",
-            content: `[imagen:${urlLocal}]`,
-            created_at: new Date().toISOString()
-        }]);
+        // proceso cada imagen una por una
+        for (const archivo of archivos) {
+            setSubiendoImagen(true);
+            setCargando(true);
 
-        try {
-            const formData = new FormData();
-            formData.append("image", archivo);
-            if (conversacionActiva) {
-                formData.append("conversation_id", conversacionActiva);
-            }
-
-            const response = await fetch(
-                `${import.meta.env.VITE_BACKEND_URL}/api/chat/image`,
-                {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${token}` },
-                    body: formData
-                }
-            );
-
-            const data = await response.json();
-            if (data.message && data.message.role) {
-                setMensajes(prev => [...prev, data.message]);
-            }
-            if (!conversacionActiva && data.conversation_id) {
-                setConversacionActiva(data.conversation_id);
-            }
-            cargarConversaciones();
-        } catch (err) {
-            console.error("error enviando imagen:", err);
+            const urlLocal = URL.createObjectURL(archivo);
             setMensajes(prev => [...prev, {
-                role: "assistant",
-                content: "No pude analizar la imagen. Inténtalo de nuevo.",
+                role: "user",
+                content: `[imagen:${urlLocal}]`,
                 created_at: new Date().toISOString()
             }]);
-        } finally {
-            setCargando(false);
-            setSubiendoImagen(false);
-            if (imgInputRef.current) imgInputRef.current.value = "";
+
+            try {
+                const formData = new FormData();
+                formData.append("image", archivo);
+                if (conversacionActiva) {
+                    formData.append("conversation_id", conversacionActiva);
+                }
+
+                const response = await fetch(
+                    `${import.meta.env.VITE_BACKEND_URL}/api/chat/image`,
+                    {
+                        method: "POST",
+                        headers: { "Authorization": `Bearer ${token}` },
+                        body: formData
+                    }
+                );
+
+                const data = await response.json();
+                if (data.message && data.message.role) {
+                    setMensajes(prev => [...prev, data.message]);
+                }
+                if (!conversacionActiva && data.conversation_id) {
+                    setConversacionActiva(data.conversation_id);
+                }
+                cargarConversaciones();
+            } catch (err) {
+                console.error("error enviando imagen:", err);
+                setMensajes(prev => [...prev, {
+                    role: "assistant",
+                    content: "No pude analizar la imagen. Inténtalo de nuevo.",
+                    created_at: new Date().toISOString()
+                }]);
+            } finally {
+                setCargando(false);
+                setSubiendoImagen(false);
+            }
         }
+
+        if (imgInputRef.current) imgInputRef.current.value = "";
     };
+
 
     const iniciarVoz = () => {
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
@@ -560,7 +566,7 @@ export const Chat = () => {
                         <div className="flex gap-2 items-end">
 
                             <input ref={fileInputRef} type="file" accept=".pdf" onChange={subirPDF} className="hidden" />
-                            <input ref={imgInputRef} type="file" accept="image/*" capture="environment" onChange={subirImagen} className="hidden" />
+                            <input ref={imgInputRef} type="file" accept="image/*" multiple onChange={subirImagen} className="hidden" />
 
                             <button
                                 onClick={() => fileInputRef.current?.click()}
