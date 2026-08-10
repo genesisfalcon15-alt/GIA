@@ -3,7 +3,7 @@
   <img src="./public/gia.svg" alt="GIA Logo" width="80" />
 </p>
 
-# GIA — Guía Inteligente de Instalación
+# GIA Guía Inteligente de Instalación
 
 Tu copiloto de montaje.
 
