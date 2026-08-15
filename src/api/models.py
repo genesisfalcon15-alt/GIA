@@ -11,6 +11,7 @@ db = SQLAlchemy()
 class User(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # vacio a proposito, para cuando meta login con google
     password: Mapped[str] = mapped_column(String(256), nullable=True)
@@ -43,8 +44,10 @@ class User(db.Model):
         return {
             "id": self.id,
             "email": self.email,
+            "name": self.name,
             "role": self.role,
             "is_pro": self.is_pro,
+            
         }
 
 

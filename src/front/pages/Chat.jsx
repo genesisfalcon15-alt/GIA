@@ -188,12 +188,14 @@ export const Chat = () => {
                 setCargando(false);
             }
         }
+
         setSubiendoPDF(true);
         setMensajes(prev => [...prev, {
             role: "assistant",
-            content: "Recibido. Estoy analizando el manual. Dame un momento.",
+            content: "Recibido. Estoy analizando el manual, dame un momento...",
             created_at: new Date().toISOString()
         }]);
+
         try {
             const formData = new FormData();
             formData.append("file", archivo);
@@ -201,13 +203,20 @@ export const Chat = () => {
                 `${import.meta.env.VITE_BACKEND_URL}/api/manuals/${projectId}/upload`,
                 { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: formData }
             );
-            setMensajes(prev => [...prev, {
-                role: "assistant",
-                content: response.ok
-                    ? "Manual listo. Ya conozco su contenido. ¿Por dónde empezamos?"
-                    : "No pude procesar el manual. Inténtalo de nuevo.",
-                created_at: new Date().toISOString()
-            }]);
+            if (response.ok) {
+                const data = await response.json();
+                setMensajes(prev => [...prev, {
+                    role: "assistant",
+                    content: data.gia_response || "Manual listo. ¿Empezamos?",
+                    created_at: new Date().toISOString()
+                }]);
+            } else {
+                setMensajes(prev => [...prev, {
+                    role: "assistant",
+                    content: "No pude procesar el manual. Inténtalo de nuevo.",
+                    created_at: new Date().toISOString()
+                }]);
+            }
             cargarConversaciones();
         } catch {
             setMensajes(prev => [...prev, {
@@ -225,7 +234,6 @@ export const Chat = () => {
         const archivos = Array.from(e.target.files);
         if (!archivos.length) return;
 
-        // proceso cada imagen una por una
         for (const archivo of archivos) {
             setSubiendoImagen(true);
             setCargando(true);
@@ -243,7 +251,6 @@ export const Chat = () => {
                 if (conversacionActiva) {
                     formData.append("conversation_id", conversacionActiva);
                 }
-
                 const response = await fetch(
                     `${import.meta.env.VITE_BACKEND_URL}/api/chat/image`,
                     {
@@ -252,7 +259,6 @@ export const Chat = () => {
                         body: formData
                     }
                 );
-
                 const data = await response.json();
                 if (data.message && data.message.role) {
                     setMensajes(prev => [...prev, data.message]);
@@ -273,10 +279,8 @@ export const Chat = () => {
                 setSubiendoImagen(false);
             }
         }
-
         if (imgInputRef.current) imgInputRef.current.value = "";
     };
-
 
     const iniciarVoz = () => {
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
@@ -307,13 +311,8 @@ export const Chat = () => {
                 `${import.meta.env.VITE_BACKEND_URL}/api/conversations/${conversacionActiva}`,
                 {
                     method: "PATCH",
-                    headers: {
-                        "Authorization": `Bearer ${token}`,
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        status: completado ? "completado" : "pendiente_confirmar"
-                    })
+                    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ status: completado ? "completado" : "pendiente_confirmar" })
                 }
             );
             cargarConversaciones();
@@ -330,8 +329,13 @@ export const Chat = () => {
     };
 
     const cerrarSesion = () => {
+        const tema = localStorage.getItem("gia_tema") || localStorage.getItem("tema");
         localStorage.removeItem("token");
         localStorage.removeItem("user");
+        if (tema) {
+            localStorage.setItem("gia_tema", tema);
+            localStorage.setItem("tema", tema);
+        }
         navigate("/login");
     };
 
@@ -343,8 +347,23 @@ export const Chat = () => {
     useEffect(() => {
         if (!token) { navigate("/login"); return; }
         cargarConversaciones();
+
         const convId = searchParams.get("conversation");
-        if (convId) { abrirConversacion(parseInt(convId)); return; }
+        if (convId) {
+            abrirConversacion(parseInt(convId));
+            return;
+        }
+
+        // modo imagen — abre selector directamente sin pasar por Groq
+        const modoImagen = searchParams.get("modo") === "imagen";
+        if (modoImagen) {
+            setTimeout(() => {
+                imgInputRef.current?.click();
+            }, 400);
+            return;
+        }
+
+        // contexto inicial desde otras cards
         const contextoInicial = sessionStorage.getItem("gia_contexto_inicial");
         if (contextoInicial) {
             sessionStorage.removeItem("gia_contexto_inicial");
@@ -502,16 +521,10 @@ export const Chat = () => {
                                 ¿Has completado este proyecto correctamente?
                             </p>
                             <div className="flex gap-2 flex-shrink-0">
-                                <button
-                                    onClick={() => confirmarProyecto(true)}
-                                    className="px-3 py-1.5 rounded-lg bg-deep-ocean dark:bg-sky text-ivoire dark:text-noche text-xs font-medium hover:opacity-90 transition"
-                                >
+                                <button onClick={() => confirmarProyecto(true)} className="px-3 py-1.5 rounded-lg bg-deep-ocean dark:bg-sky text-ivoire dark:text-noche text-xs font-medium hover:opacity-90 transition">
                                     Sí, completado
                                 </button>
-                                <button
-                                    onClick={() => confirmarProyecto(false)}
-                                    className="px-3 py-1.5 rounded-lg border border-douche dark:border-noche-borde text-gris-piedra text-xs hover:text-deep-ocean dark:hover:text-ivoire transition"
-                                >
+                                <button onClick={() => confirmarProyecto(false)} className="px-3 py-1.5 rounded-lg border border-douche dark:border-noche-borde text-gris-piedra text-xs hover:text-deep-ocean dark:hover:text-ivoire transition">
                                     Pendiente
                                 </button>
                             </div>
@@ -531,7 +544,10 @@ export const Chat = () => {
                         <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
                             {mensajes.map((msg, index) => (
                                 <div key={index} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                                    <div className={`max-w-[78%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === "user" ? "bg-deep-ocean text-ivoire dark:bg-sky dark:text-noche rounded-br-sm" : "bg-white dark:bg-noche-suave text-deep-ocean dark:text-ivoire border border-douche dark:border-noche-borde rounded-bl-sm"}`}>
+                                    <div className={`max-w-[78%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === "user"
+                                        ? "bg-deep-ocean text-ivoire dark:bg-sky dark:text-noche rounded-br-sm"
+                                        : "bg-white dark:bg-noche-suave text-deep-ocean dark:text-ivoire border border-douche dark:border-noche-borde rounded-bl-sm"
+                                        }`}>
                                         {msg.content.startsWith("[imagen:") ? (
                                             <img
                                                 src={msg.content.replace("[imagen:", "").replace("]", "")}
@@ -631,7 +647,7 @@ export const Chat = () => {
                             <button
                                 onClick={enviarMensaje}
                                 disabled={!input.trim() || cargando}
-                                className="flex-shrink-0 w-9 h-9 rounded-lg bg-deep-ocean text-ivoire hover:bg-ocean-vivo transition disabled:opacity-30 dark:bg-sky dark:text-noche flex items-center justify-center"
+                                className="flex-shrink-0 w-9 h-9 rounded-lg bg-deep-ocean text-ivoire hover:opacity-90 transition disabled:opacity-30 dark:bg-sky dark:text-noche flex items-center justify-center"
                             >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <path d="M5 12h14M12 5l7 7-7 7" />

@@ -1,17 +1,21 @@
 from flask import request, jsonify, Blueprint
 from flask_jwt_extended import create_access_token
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from api.models import db, User
 from api.utils import APIException
 
-# creo el blueprint de autenticacion
 auth_bp = Blueprint('auth', __name__)
+
+# limiter propio para auth — evita circular import con app.py
+limiter = Limiter(get_remote_address, storage_uri="memory://")
 
 
 @auth_bp.route('/register', methods=['POST'])
+@limiter.limit("10 per hour")
 def register():
     body = request.get_json(silent=True)
 
-    # compruebo que me llegan los datos minimos
     if not body:
         raise APIException("no me llego ningun dato", status_code=400)
     if not body.get("email"):
@@ -22,23 +26,22 @@ def register():
     email = body.get("email").strip().lower()
     password = body.get("password")
     role = body.get("role", "particular")
+    name = body.get("name", "").strip()
 
-    # miro si ya existe alguien con ese email
     existing_user = User.query.filter_by(email=email).first()
     if existing_user:
         raise APIException("ya existe una cuenta con este email", status_code=409)
 
-    # creo el usuario y le pongo la contraseña encriptada
     new_user = User()
     new_user.email = email
     new_user.role = role
     new_user.is_active = True
+    new_user.name = name if name else None
     new_user.set_password(password)
 
     db.session.add(new_user)
     db.session.commit()
 
-    # devuelvo el token igual que en login para que el frontend lo guarde
     access_token = create_access_token(identity=str(new_user.id))
     return jsonify({
         "token": access_token,
@@ -47,6 +50,7 @@ def register():
 
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("10 per hour")
 def login():
     body = request.get_json(silent=True)
 

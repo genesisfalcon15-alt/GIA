@@ -28,6 +28,7 @@ torch = "==2.2.2"
 numpy = "<2"
 anthropic = "*"
 pillow = "*"
+flask-limiter = "*"
 
 [requires]
 python_version = "3.12"
