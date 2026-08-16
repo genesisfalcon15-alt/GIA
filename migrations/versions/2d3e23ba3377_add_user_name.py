@@ -65,6 +65,27 @@ def upgrade():
     sa.ForeignKeyConstraint(['project_id'], ['project.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+
+    # Crear progress únicamente si todavía no existe.
+    # Esto permite que la migración funcione también sobre una BD nueva.
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    project_columns = {
+        column["name"]
+        for column in inspector.get_columns("project")
+    }
+
+    if "progress" not in project_columns:
+        op.add_column(
+            "project",
+            sa.Column(
+                "progress",
+                sa.INTEGER(),
+                nullable=False,
+                server_default=sa.text("0")
+            )
+        )
+
     with op.batch_alter_table('project', schema=None) as batch_op:
         batch_op.alter_column('progress',
                existing_type=sa.INTEGER(),
