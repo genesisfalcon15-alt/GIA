@@ -1,7 +1,7 @@
-from api.models import Project, Manual, ManualMetadata, ChatHistory
+from api.models import Project, Manual, ManualMetadata, ChatHistory, UserProfile
 from api.knowledge_service import buscar_chunks_relevantes, construir_contexto
+from sqlalchemy import or_
 
-# palabras que indican referencia al contexto anterior
 REFERENCIAS_CONVERSACIONALES = [
     "ese", "eso", "el mismo", "la misma", "ese manual", "ese mueble",
     "el que te he adjuntado", "el que subí", "el que te envié",
@@ -165,7 +165,9 @@ def buscar_proyectos_anteriores(user_id, project_id_actual, limite=3):
 def construir_contexto_conversacion(project_id, user_message, historial_groq, user_id=None):
     """
     cerebro de gia: construye el contexto completo antes de cada respuesta.
-    incluye nivel de asistencia y paso actual del proyecto.
+    combina inventario estructurado + metadata + rag + historial + perfil.
+    no hace return temprano — siempre construye el contexto completo.
+    la consulta rag se enriquece con el paso actual si existe.
     """
     resultado = {
         "proyecto": None,
@@ -180,6 +182,7 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq, us
         "nivel_asistencia": None,
         "paso_actual": None,
         "total_pasos": None,
+        "perfil_usuario": None,
     }
 
     proyecto = Project.query.get(project_id)
@@ -205,6 +208,29 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq, us
         "paso_actual": resultado["paso_actual"],
         "total_pasos": resultado["total_pasos"],
     }
+
+    # perfil del usuario
+    if user_id:
+        try:
+            perfil = UserProfile.query.filter_by(user_id=user_id).first()
+            if perfil:
+                lineas_perfil = []
+                if perfil.experience_level:
+                    exp = ", ".join(perfil.experience_level) if isinstance(perfil.experience_level, list) else perfil.experience_level
+                    lineas_perfil.append(f"Experiencia con bricolaje: {exp}")
+                if perfil.tools_available:
+                    tools = ", ".join(perfil.tools_available[:6])
+                    lineas_perfil.append(f"Herramientas disponibles: {tools}")
+                if perfil.interests:
+                    intereses = ", ".join(perfil.interests[:4])
+                    lineas_perfil.append(f"Intereses: {intereses}")
+                if perfil.help_style:
+                    lineas_perfil.append(f"Estilo de ayuda preferido: {perfil.help_style}")
+                if lineas_perfil:
+                    resultado["perfil_usuario"] = "\n".join(lineas_perfil)
+                    print(f"=== CONTEXT: perfil de usuario cargado ===")
+        except Exception as e:
+            print(f"=== CONTEXT: error cargando perfil — {e} ===")
 
     if user_id and es_referencia_proyecto_anterior(user_message):
         contexto_anteriores = buscar_proyectos_anteriores(user_id, project_id)
@@ -235,24 +261,44 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq, us
     tipo_pregunta = detectar_tipo_pregunta(user_message)
     resultado["tipo_pregunta"] = tipo_pregunta
 
-    if tipo_pregunta and metadata:
+    # acumulo contexto en partes — no hago return temprano
+    partes_contexto = []
+
+    # metadata específica solo si no existe inventario estructurado
+    # el inventario tiene prioridad sobre metadata antigua
+    tiene_inventario = metadata and metadata.components_inventory
+    if tipo_pregunta and metadata and not tiene_inventario:
         contexto_metadata = construir_contexto_metadata(metadata, tipo_pregunta)
         if contexto_metadata:
-            resultado["contexto_rag"] = contexto_metadata
-            print(f"=== CONTEXT: usando metadata para tipo={tipo_pregunta} ===")
-            return resultado
+            partes_contexto.append(contexto_metadata)
+            print(f"=== CONTEXT: metadata antigua para tipo={tipo_pregunta} ===")
 
+    # construyo la consulta rag
     if es_referencia_conversacional(user_message):
         consulta = construir_consulta_enriquecida(user_message, historial_groq, manual)
     else:
         consulta = user_message
 
+    # enriquezco la consulta con el paso actual si existe
+    # el paso no sustituye la consulta — la complementa
+    paso_actual = resultado.get("paso_actual")
+    if paso_actual:
+        consulta = f"paso {paso_actual} {consulta}"
+        print(f"=== CONTEXT: consulta RAG enriquecida con paso {paso_actual} ===")
+
     resultado["consulta_rag"] = consulta
 
+    # rag — siempre se ejecuta para recuperar instrucciones del manual
+    # si semántica no disponible → fallback textual automático en knowledge_service
     chunks = buscar_chunks_relevantes(consulta, manual.id)
-    resultado["contexto_rag"] = construir_contexto(chunks)
+    contexto_rag = construir_contexto(chunks)
+    if contexto_rag:
+        partes_contexto.append(contexto_rag)
 
     print(f"=== CONTEXT: rag devolvió {len(chunks) if chunks else 0} chunks ===")
+
+    # combino todo el contexto
+    resultado["contexto_rag"] = "\n\n".join(partes_contexto) if partes_contexto else None
 
     return resultado
 
@@ -260,12 +306,18 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq, us
 def construir_info_manual_para_groq(contexto):
     """
     construye el contexto completo del proyecto para groq.
-    incluye nivel de asistencia y paso actual.
+    prioridad: inventario estructurado > metadata antigua > rag.
     """
-    if not contexto["tiene_manual"] and not contexto.get("proyectos_anteriores"):
+    if not contexto["tiene_manual"] and not contexto.get("proyectos_anteriores") and not contexto.get("perfil_usuario"):
         return None
 
     lineas = []
+
+    # perfil del usuario
+    if contexto.get("perfil_usuario"):
+        lineas.append("# PERFIL DEL USUARIO")
+        lineas.append(contexto["perfil_usuario"])
+        lineas.append("")
 
     if contexto["tiene_manual"]:
         manual = contexto["manual"]
@@ -298,8 +350,77 @@ def construir_info_manual_para_groq(contexto):
                 warnings = "; ".join(str(w) for w in metadata.safety_warnings[:2])
                 lineas.append(f"Advertencias: {warnings}")
 
+            # inventario estructurado — prioridad absoluta
+            if metadata.components_inventory:
+                inv = metadata.components_inventory
+                lineas.append("")
+                lineas.append("# INVENTARIO ESTRUCTURADO DEL PRODUCTO")
+                lineas.append("Fuente de verdad para identificar piezas, herrajes, cantidades y relaciones.")
+                lineas.append("El RAG aporta instrucciones del paso pero NO puede contradecir estas identificaciones.")
+
+                piezas_confirmadas = [
+                    p for p in inv.get("piezas", [])
+                    if "confirmado" in p.get("confianza", "")
+                ]
+                if piezas_confirmadas:
+                    lineas.append("IDENTIFICACIONES CONFIRMADAS — PIEZAS:")
+                    for p in piezas_confirmadas:
+                        linea = f"  Pieza {p['id']}: {p.get('descripcion', 'sin descripción')}"
+                        if p.get("cantidad"):
+                            linea += f" × {p['cantidad']}"
+                        if p.get("dimensiones"):
+                            linea += f" ({p['dimensiones']})"
+                        lineas.append(linea)
+
+                herrajes_confirmados = [
+                    h for h in inv.get("herrajes", [])
+                    if "confirmado" in h.get("confianza", "")
+                ]
+                if herrajes_confirmados:
+                    lineas.append("IDENTIFICACIONES CONFIRMADAS — HERRAJES:")
+                    for h in herrajes_confirmados:
+                        linea = f"  {h['letra']} = {h.get('tipo', 'componente')}"
+                        if h.get("descripcion"):
+                            linea += f" ({h['descripcion']})"
+                        if h.get("cantidad"):
+                            linea += f" × {h['cantidad']}"
+                        if h.get("dimensiones"):
+                            linea += f" — {h['dimensiones']}"
+                        lineas.append(linea)
+
+                relaciones = inv.get("relaciones", [])
+                if relaciones:
+                    lineas.append("RELACIONES POR PASO:")
+                    for r in relaciones:
+                        piezas_str = " + ".join([f"pieza {p}" for p in r.get("piezas", [])])
+                        herrajes_str = ", ".join([
+                            f"{h['letra']} × {h.get('cantidad', '?')}"
+                            for h in r.get("herrajes", [])
+                        ])
+                        linea = f"  Paso {r.get('paso', '?')}: {piezas_str}"
+                        if herrajes_str:
+                            linea += f" → {herrajes_str}"
+                        lineas.append(linea)
+
+                no_confirmados = inv.get("no_confirmados", [])
+                if no_confirmados:
+                    lineas.append("IDENTIFICACIONES PRESENTES PERO NO CONFIRMADAS:")
+                    lineas.append(f"  {', '.join(str(x) for x in no_confirmados)}")
+                    lineas.append("  GIA sabe que existen pero NO puede afirmar qué son.")
+                    lineas.append("  Si el usuario pregunta: 'El manual no confirma qué corresponde a [X].'")
+
+            else:
+                # manual antiguo sin inventario — usa parts_list y hardware_list
+                print(f"=== CONTEXT: manual sin inventario estructurado — usando metadata legacy ===")
+                if metadata.parts_list:
+                    partes = ", ".join(str(p) for p in metadata.parts_list[:8])
+                    lineas.append(f"Piezas identificadas: {partes}")
+                if metadata.hardware_list:
+                    herrajes = ", ".join(str(h) for h in metadata.hardware_list[:8])
+                    lineas.append(f"Herrajes identificados: {herrajes}")
+
     if contexto.get("proyectos_anteriores"):
         lineas.append("")
         lineas.append(contexto["proyectos_anteriores"])
 
-    return "\n".join(lineas)
+    return "\n".join(lineas) if lineas else None

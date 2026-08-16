@@ -29,6 +29,7 @@ numpy = "<2"
 anthropic = "*"
 pillow = "*"
 flask-limiter = "*"
+pymupdf = "*"
 
 [requires]
 python_version = "3.12"

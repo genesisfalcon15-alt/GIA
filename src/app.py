@@ -7,6 +7,7 @@ from flask import Flask, request, jsonify, url_for, send_from_directory
 from flask_migrate import Migrate
 from flask_swagger import swagger
 from flask_jwt_extended import JWTManager
+from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from api.utils import APIException, generate_sitemap
@@ -38,8 +39,12 @@ app.config["JWT_SECRET_KEY"] = os.getenv("FLASK_APP_KEY")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
 jwt = JWTManager(app)
 
+# cors — origen controlado por variable de entorno
+# en desarrollo usa localhost, en producción usa la url real del frontend
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+CORS(app, origins=[frontend_url])
+
 # limiter disponible para los endpoints que lo necesiten
-# el rate limiting solo se aplica donde tiene sentido — auth.py
 limiter = Limiter(
     get_remote_address,
     app=app,

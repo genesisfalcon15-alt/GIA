@@ -3,12 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { LogoGia } from "../components/LogoGia";
 import { Camera, Hammer, Wrench, Sofa } from "lucide-react";
 
-// formas inspiradas en el logo de GIA — tornillo y tuerca
-// grandes, desenfocadas, cortadas por los bordes
-// NO son copias del logo — son elementos visuales que evocan su lenguaje
 const FondoMaterial = ({ isDark }) => {
 	const c = isDark ? "#A9B5C2" : "#3C5160";
-	const bg = isDark ? "#232830" : "#FAF8F6";
 
 	return (
 		<div
@@ -24,16 +20,14 @@ const FondoMaterial = ({ isDark }) => {
 					right: "-120px",
 					width: "420px",
 					height: "420px",
-					opacity: isDark ? 0.10 : 0.06,
-					filter: `blur(${isDark ? 8 : 10}px)`,
+					opacity: isDark ? 0.07 : 0.04,
+					filter: `blur(${isDark ? 16 : 18}px)`,
 					pointerEvents: "none"
 				}}
 				viewBox="0 0 200 200"
 				fill="none"
 			>
-				{/* círculo exterior de la cabeza */}
 				<circle cx="100" cy="100" r="90" stroke={c} strokeWidth="8" fill="none" />
-				{/* ranura horizontal */}
 				<line x1="20" y1="100" x2="180" y2="100" stroke={c} strokeWidth="10" strokeLinecap="round" />
 			</svg>
 
@@ -45,21 +39,19 @@ const FondoMaterial = ({ isDark }) => {
 					left: "-100px",
 					width: "460px",
 					height: "460px",
-					opacity: isDark ? 0.09 : 0.05,
-					filter: `blur(${isDark ? 10 : 12}px)`,
+					opacity: isDark ? 0.06 : 0.03,
+					filter: `blur(${isDark ? 18 : 20}px)`,
 					pointerEvents: "none"
 				}}
 				viewBox="0 0 200 200"
 				fill="none"
 			>
-				{/* hexágono exterior */}
 				<path
 					d="M100 10 L174 55 L174 145 L100 190 L26 145 L26 55 Z"
 					stroke={c}
 					strokeWidth="7"
 					fill="none"
 				/>
-				{/* hexágono interior — el hueco de la tuerca */}
 				<path
 					d="M100 60 L135 80 L135 120 L100 140 L65 120 L65 80 Z"
 					stroke={c}
@@ -76,17 +68,15 @@ const FondoMaterial = ({ isDark }) => {
 					right: "-30px",
 					width: "140px",
 					height: "400px",
-					opacity: isDark ? 0.08 : 0.05,
-					filter: `blur(${isDark ? 6 : 8}px)`,
+					opacity: isDark ? 0.05 : 0.03,
+					filter: `blur(${isDark ? 14 : 16}px)`,
 					pointerEvents: "none"
 				}}
 				viewBox="0 0 60 300"
 				fill="none"
 			>
-				{/* líneas verticales de la rosca */}
 				<line x1="15" y1="0" x2="15" y2="300" stroke={c} strokeWidth="5" strokeLinecap="round" />
 				<line x1="45" y1="0" x2="45" y2="300" stroke={c} strokeWidth="5" strokeLinecap="round" />
-				{/* ranuras horizontales */}
 				{[20, 50, 80, 110, 140, 170, 200, 230, 260].map((y, i) => (
 					<line key={i} x1="15" y1={y} x2="45" y2={y} stroke={c} strokeWidth="4" strokeLinecap="round" />
 				))}
