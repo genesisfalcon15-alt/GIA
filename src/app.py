@@ -7,6 +7,9 @@ from flask import Flask, request, jsonify, url_for, send_from_directory
 from flask_migrate import Migrate
 from flask_swagger import swagger
 from flask_jwt_extended import JWTManager
+from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from api.utils import APIException, generate_sitemap
 from api.models import db
 from api.routes import api
@@ -16,6 +19,7 @@ from api.commands import setup_commands
 ENV = "development" if os.getenv("FLASK_DEBUG") == "1" else "production"
 static_file_dir = os.path.join(os.path.dirname(
     os.path.realpath(__file__)), '../dist/')
+
 app = Flask(__name__)
 app.url_map.strict_slashes = False
 
@@ -31,36 +35,44 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 MIGRATE = Migrate(app, db, compare_type=True)
 db.init_app(app)
 
-# jwt usa la misma clave secreta que ya tengo en el .env
 app.config["JWT_SECRET_KEY"] = os.getenv("FLASK_APP_KEY")
-
-# token valido 7 dias para no tener que hacer login constantemente
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
-
 jwt = JWTManager(app)
 
-# activo el panel de admin
+# cors — origen controlado por variable de entorno
+# en desarrollo usa localhost, en producción usa la url real del frontend
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+CORS(app, origins=[frontend_url])
+
+# limiter disponible para los endpoints que lo necesiten
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://"
+)
+
 setup_admin(app)
-
-# activo los comandos personalizados
 setup_commands(app)
-
-# registro todos los endpoints de la api bajo el prefijo /api
 app.register_blueprint(api, url_prefix='/api')
 
-# convierto los errores en un json legible
 @app.errorhandler(APIException)
 def handle_invalid_usage(error):
     return jsonify(error.to_dict()), error.status_code
 
-# genera el mapa de endpoints disponibles (solo en desarrollo)
+@app.errorhandler(429)
+def rate_limit_exceeded(e):
+    return jsonify({
+        "message": "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
+        "error": "rate_limit_exceeded"
+    }), 429
+
 @app.route('/')
 def sitemap():
     if ENV == "development":
         return generate_sitemap(app)
     return send_from_directory(static_file_dir, 'index.html')
 
-# sirve cualquier otro archivo estatico del frontend
 @app.route('/<path:path>', methods=['GET'])
 def serve_any_other_file(path):
     if not os.path.isfile(os.path.join(static_file_dir, path)):

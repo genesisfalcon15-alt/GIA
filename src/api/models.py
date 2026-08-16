@@ -11,26 +11,16 @@ db = SQLAlchemy()
 class User(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
-    # vacio a proposito, para cuando meta login con google
     password: Mapped[str] = mapped_column(String(256), nullable=True)
-
     is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
-
-    # particular o profesional
     role: Mapped[str] = mapped_column(String(30), nullable=False, default="particular")
-
-    # listo para el stripe pro
     is_pro: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
-
-    # controlo el limite gratis de groq
     daily_message_count: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     last_message_date: Mapped[str] = mapped_column(String(10), nullable=True)
 
-    # relacion con Project
     projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-
-    # relacion con UserTool: caja de herramientas del usuario
     tools: Mapped[list["UserTool"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
     def set_password(self, password):
@@ -43,6 +33,7 @@ class User(db.Model):
         return {
             "id": self.id,
             "email": self.email,
+            "name": self.name,
             "role": self.role,
             "is_pro": self.is_pro,
         }
@@ -51,37 +42,18 @@ class User(db.Model):
 class Project(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    # quien es dueno del montaje
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
     user: Mapped[User] = relationship(back_populates="projects")
 
-    # titulo nullable porque lo genera groq en el primer mensaje
     title: Mapped[str] = mapped_column(String(255), nullable=True)
-
-    # en_progreso, completado, pausado, cancelado
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="en_progreso")
-
-    # montaje, instalacion, restauracion, reparacion, libre
     category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-
-    # porcentaje de progreso del proyecto
     progress: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
-
-    # minutos invertidos en el proyecto
     time_invested: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
-
-    # extra_data flexible: brand, model, room, favorite, archived, color, etc.
-    # evita migraciones cada vez que se añade un campo nuevo
-    # NO usar "metadata" — es palabra reservada en SQLAlchemy
     extra_data: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True, default=dict)
 
-    # relacion con Manual
     manuals: Mapped[list["Manual"]] = relationship(back_populates="project", cascade="all, delete-orphan")
-
-    # relacion con ChatHistory
     chat_history: Mapped[list["ChatHistory"]] = relationship(back_populates="project", cascade="all, delete-orphan")
-
-    # relaciones con tablas del proyecto
     timeline: Mapped[list["ProjectTimeline"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     notes: Mapped[list["ProjectNote"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     photos: Mapped[list["ProjectPhoto"]] = relationship(back_populates="project", cascade="all, delete-orphan")
@@ -89,7 +61,6 @@ class Project(db.Model):
     project_tools: Mapped[list["ProjectTool"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     transformations: Mapped[list["ProjectTransformation"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
-    # timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -181,6 +152,10 @@ class ManualMetadata(db.Model):
     estimated_time: Mapped[str] = mapped_column(String(100), nullable=True)
     difficulty: Mapped[str] = mapped_column(String(30), nullable=True)
 
+    # inventario estructurado — piezas, herrajes, relaciones con confianza y páginas de origen
+    # nullable para compatibilidad con manuales existentes — si es None usa RAG y metadata anterior
+    components_inventory: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     def serialize(self):
@@ -193,6 +168,7 @@ class ManualMetadata(db.Model):
             "safety_warnings": self.safety_warnings,
             "estimated_time": self.estimated_time,
             "difficulty": self.difficulty,
+            "components_inventory": self.components_inventory,
         }
 
 

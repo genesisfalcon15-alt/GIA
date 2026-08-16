@@ -1,7 +1,7 @@
-from api.models import Project, Manual, ManualMetadata, ChatHistory
+from api.models import Project, Manual, ManualMetadata, ChatHistory, UserProfile
 from api.knowledge_service import buscar_chunks_relevantes, construir_contexto
+from sqlalchemy import or_
 
-# palabras que indican referencia al contexto anterior
 REFERENCIAS_CONVERSACIONALES = [
     "ese", "eso", "el mismo", "la misma", "ese manual", "ese mueble",
     "el que te he adjuntado", "el que subí", "el que te envié",
@@ -12,7 +12,6 @@ REFERENCIAS_CONVERSACIONALES = [
     "qué es", "qué hay", "qué tiene", "qué contiene", "qué dice"
 ]
 
-# palabras que indican referencia a proyectos anteriores
 REFERENCIAS_PROYECTOS_ANTERIORES = [
     "recuerdas", "recuerda", "el otro día", "la semana pasada", "antes",
     "el proyecto", "aquella vez", "cuando monté", "cuando instalé",
@@ -22,6 +21,18 @@ REFERENCIAS_PROYECTOS_ANTERIORES = [
     "qué tornillos", "qué tacos", "qué broca", "qué llave allen"
 ]
 
+PALABRAS_NIVEL_PRINCIPIANTE = [
+    "paso a paso", "con detalle", "no sé", "no entiendo", "explícame",
+    "nunca he montado", "es mi primera vez", "principiante", "despacio"
+]
+PALABRAS_NIVEL_INTERMEDIO = [
+    "normal", "a ritmo normal", "intermedio", "algo de experiencia"
+]
+PALABRAS_NIVEL_EXPERTO = [
+    "directo", "rápido", "sin explicaciones", "experto", "ya sé", "lo llevo yo",
+    "soy profesional", "tengo experiencia", "lo hago solo"
+]
+
 KEYWORDS_HERRAMIENTAS = ["herramienta", "herramientas", "necesito", "qué necesito", "qué hace falta"]
 KEYWORDS_PIEZAS = ["pieza", "piezas", "componente", "componentes", "parte", "partes", "qué viene"]
 KEYWORDS_TORNILLERIA = ["tornillo", "tornillos", "tuerca", "tuercas", "anclaje", "clavo", "fijación"]
@@ -29,8 +40,18 @@ KEYWORDS_PASOS = ["cuántos pasos", "número de pasos", "pasos tiene", "cuánto 
 KEYWORDS_DIFICULTAD = ["difícil", "dificultad", "nivel", "complicado", "fácil"]
 
 
+def detectar_nivel_asistencia(mensaje):
+    mensaje_lower = mensaje.lower()
+    if any(p in mensaje_lower for p in PALABRAS_NIVEL_EXPERTO):
+        return "experto"
+    if any(p in mensaje_lower for p in PALABRAS_NIVEL_INTERMEDIO):
+        return "intermedio"
+    if any(p in mensaje_lower for p in PALABRAS_NIVEL_PRINCIPIANTE):
+        return "principiante"
+    return None
+
+
 def es_referencia_conversacional(mensaje):
-    """detecta si el mensaje hace referencia a algo anterior sin contenido nuevo"""
     mensaje_lower = mensaje.lower().strip()
     if len(mensaje_lower.split()) <= 4:
         for ref in REFERENCIAS_CONVERSACIONALES:
@@ -43,7 +64,6 @@ def es_referencia_conversacional(mensaje):
 
 
 def es_referencia_proyecto_anterior(mensaje):
-    """detecta si el mensaje hace referencia a un proyecto anterior del usuario"""
     mensaje_lower = mensaje.lower().strip()
     for ref in REFERENCIAS_PROYECTOS_ANTERIORES:
         if ref in mensaje_lower:
@@ -52,7 +72,6 @@ def es_referencia_proyecto_anterior(mensaje):
 
 
 def detectar_tipo_pregunta(mensaje):
-    """detecta qué tipo de información busca el usuario para consultar metadata primero"""
     mensaje_lower = mensaje.lower()
     if any(k in mensaje_lower for k in KEYWORDS_HERRAMIENTAS):
         return "herramientas"
@@ -68,7 +87,6 @@ def detectar_tipo_pregunta(mensaje):
 
 
 def construir_consulta_enriquecida(user_message, historial, manual):
-    """enriquece la consulta rag con el contexto conversacional reciente"""
     partes = []
     mensajes_usuario = [m["content"] for m in historial if m["role"] == "user"][-3:]
     if mensajes_usuario:
@@ -80,7 +98,6 @@ def construir_consulta_enriquecida(user_message, historial, manual):
 
 
 def construir_contexto_metadata(metadata, tipo_pregunta):
-    """construye contexto desde metadata estructurada para preguntas frecuentes"""
     if not metadata:
         return None
 
@@ -115,10 +132,6 @@ def construir_contexto_metadata(metadata, tipo_pregunta):
 
 
 def buscar_proyectos_anteriores(user_id, project_id_actual, limite=3):
-    """
-    busca proyectos anteriores del usuario para dar contexto de memoria entre proyectos.
-    devuelve un resumen de los proyectos más recientes distintos al actual.
-    """
     proyectos = Project.query.filter(
         Project.user_id == user_id,
         Project.id != project_id_actual,
@@ -133,14 +146,12 @@ def buscar_proyectos_anteriores(user_id, project_id_actual, limite=3):
         linea = f"- {p.title}"
         if p.status:
             linea += f" ({p.status})"
-        # busco si tiene manual para añadir contexto
         manual = Manual.query.filter_by(
             project_id=p.id,
             status="listo"
         ).first()
         if manual:
             linea += f" — manual: {manual.original_filename}"
-            # añado metadata si existe
             metadata = ManualMetadata.query.filter_by(manual_id=manual.id).first()
             if metadata and metadata.tools_required:
                 tools = ", ".join(metadata.tools_required[:3])
@@ -153,14 +164,10 @@ def buscar_proyectos_anteriores(user_id, project_id_actual, limite=3):
 
 def construir_contexto_conversacion(project_id, user_message, historial_groq, user_id=None):
     """
-    cerebro de gia: construye el contexto completo antes de cada respuesta
-
-    flujo:
-    1. contexto conversacional
-    2. proyecto activo
-    3. metadata estructurada
-    4. rag
-    5. memoria entre proyectos (si el mensaje lo requiere)
+    cerebro de gia: construye el contexto completo antes de cada respuesta.
+    combina inventario estructurado + metadata + rag + historial + perfil.
+    no hace return temprano — siempre construye el contexto completo.
+    la consulta rag se enriquece con el paso actual si existe.
     """
     resultado = {
         "proyecto": None,
@@ -172,6 +179,10 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq, us
         "info_proyecto": None,
         "tipo_pregunta": None,
         "proyectos_anteriores": None,
+        "nivel_asistencia": None,
+        "paso_actual": None,
+        "total_pasos": None,
+        "perfil_usuario": None,
     }
 
     proyecto = Project.query.get(project_id)
@@ -179,19 +190,53 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq, us
         return resultado
 
     resultado["proyecto"] = proyecto
+
+    extra = proyecto.extra_data or {}
+    resultado["nivel_asistencia"] = extra.get("nivel_asistencia", None)
+    resultado["paso_actual"] = extra.get("current_step", None)
+    resultado["total_pasos"] = extra.get("total_steps", None)
+
+    nivel_detectado = detectar_nivel_asistencia(user_message)
+    if nivel_detectado:
+        resultado["nivel_asistencia"] = nivel_detectado
+        print(f"=== CONTEXT: nivel de asistencia detectado → {nivel_detectado} ===")
+
     resultado["info_proyecto"] = {
         "titulo": proyecto.title or "Montaje sin título",
         "estado": proyecto.status,
+        "nivel_asistencia": resultado["nivel_asistencia"],
+        "paso_actual": resultado["paso_actual"],
+        "total_pasos": resultado["total_pasos"],
     }
 
-    # si el mensaje hace referencia a proyectos anteriores, los busco
+    # perfil del usuario
+    if user_id:
+        try:
+            perfil = UserProfile.query.filter_by(user_id=user_id).first()
+            if perfil:
+                lineas_perfil = []
+                if perfil.experience_level:
+                    exp = ", ".join(perfil.experience_level) if isinstance(perfil.experience_level, list) else perfil.experience_level
+                    lineas_perfil.append(f"Experiencia con bricolaje: {exp}")
+                if perfil.tools_available:
+                    tools = ", ".join(perfil.tools_available[:6])
+                    lineas_perfil.append(f"Herramientas disponibles: {tools}")
+                if perfil.interests:
+                    intereses = ", ".join(perfil.interests[:4])
+                    lineas_perfil.append(f"Intereses: {intereses}")
+                if perfil.help_style:
+                    lineas_perfil.append(f"Estilo de ayuda preferido: {perfil.help_style}")
+                if lineas_perfil:
+                    resultado["perfil_usuario"] = "\n".join(lineas_perfil)
+                    print(f"=== CONTEXT: perfil de usuario cargado ===")
+        except Exception as e:
+            print(f"=== CONTEXT: error cargando perfil — {e} ===")
+
     if user_id and es_referencia_proyecto_anterior(user_message):
         contexto_anteriores = buscar_proyectos_anteriores(user_id, project_id)
         if contexto_anteriores:
             resultado["proyectos_anteriores"] = contexto_anteriores
-            print(f"=== CONTEXT: memoria entre proyectos activada ===")
 
-    # busco el manual más reciente del proyecto en estado listo
     manual = Manual.query.filter_by(
         project_id=project_id,
         status="listo"
@@ -216,38 +261,63 @@ def construir_contexto_conversacion(project_id, user_message, historial_groq, us
     tipo_pregunta = detectar_tipo_pregunta(user_message)
     resultado["tipo_pregunta"] = tipo_pregunta
 
-    if tipo_pregunta and metadata:
+    # acumulo contexto en partes — no hago return temprano
+    partes_contexto = []
+
+    # metadata específica solo si no existe inventario estructurado
+    # el inventario tiene prioridad sobre metadata antigua
+    tiene_inventario = metadata and metadata.components_inventory
+    if tipo_pregunta and metadata and not tiene_inventario:
         contexto_metadata = construir_contexto_metadata(metadata, tipo_pregunta)
         if contexto_metadata:
-            resultado["contexto_rag"] = contexto_metadata
-            print(f"=== CONTEXT: usando metadata para tipo={tipo_pregunta} ===")
-            return resultado
+            partes_contexto.append(contexto_metadata)
+            print(f"=== CONTEXT: metadata antigua para tipo={tipo_pregunta} ===")
 
+    # construyo la consulta rag
     if es_referencia_conversacional(user_message):
         consulta = construir_consulta_enriquecida(user_message, historial_groq, manual)
-        print(f"=== CONTEXT: consulta enriquecida: {consulta[:100]} ===")
     else:
         consulta = user_message
 
+    # enriquezco la consulta con el paso actual si existe
+    # el paso no sustituye la consulta — la complementa
+    paso_actual = resultado.get("paso_actual")
+    if paso_actual:
+        consulta = f"paso {paso_actual} {consulta}"
+        print(f"=== CONTEXT: consulta RAG enriquecida con paso {paso_actual} ===")
+
     resultado["consulta_rag"] = consulta
 
+    # rag — siempre se ejecuta para recuperar instrucciones del manual
+    # si semántica no disponible → fallback textual automático en knowledge_service
     chunks = buscar_chunks_relevantes(consulta, manual.id)
-    resultado["contexto_rag"] = construir_contexto(chunks)
+    contexto_rag = construir_contexto(chunks)
+    if contexto_rag:
+        partes_contexto.append(contexto_rag)
 
     print(f"=== CONTEXT: rag devolvió {len(chunks) if chunks else 0} chunks ===")
+
+    # combino todo el contexto
+    resultado["contexto_rag"] = "\n\n".join(partes_contexto) if partes_contexto else None
 
     return resultado
 
 
 def construir_info_manual_para_groq(contexto):
     """
-    construye el contexto completo del proyecto y manual para groq.
-    incluye proyectos anteriores si los hay.
+    construye el contexto completo del proyecto para groq.
+    prioridad: inventario estructurado > metadata antigua > rag.
     """
-    if not contexto["tiene_manual"] and not contexto.get("proyectos_anteriores"):
+    if not contexto["tiene_manual"] and not contexto.get("proyectos_anteriores") and not contexto.get("perfil_usuario"):
         return None
 
     lineas = []
+
+    # perfil del usuario
+    if contexto.get("perfil_usuario"):
+        lineas.append("# PERFIL DEL USUARIO")
+        lineas.append(contexto["perfil_usuario"])
+        lineas.append("")
 
     if contexto["tiene_manual"]:
         manual = contexto["manual"]
@@ -259,6 +329,12 @@ def construir_info_manual_para_groq(contexto):
             f"Manual disponible: procesado y listo para consulta",
             f"Fragmentos indexados: {manual.total_chunks}",
         ]
+
+        if proyecto.get("nivel_asistencia"):
+            lineas.append(f"Nivel de asistencia del usuario: {proyecto['nivel_asistencia']}")
+
+        if proyecto.get("paso_actual") and proyecto.get("total_pasos"):
+            lineas.append(f"Último paso registrado: {proyecto['paso_actual']} de {proyecto['total_pasos']}")
 
         if metadata:
             if metadata.difficulty:
@@ -274,9 +350,77 @@ def construir_info_manual_para_groq(contexto):
                 warnings = "; ".join(str(w) for w in metadata.safety_warnings[:2])
                 lineas.append(f"Advertencias: {warnings}")
 
-    # añado proyectos anteriores si el usuario hizo referencia a ellos
+            # inventario estructurado — prioridad absoluta
+            if metadata.components_inventory:
+                inv = metadata.components_inventory
+                lineas.append("")
+                lineas.append("# INVENTARIO ESTRUCTURADO DEL PRODUCTO")
+                lineas.append("Fuente de verdad para identificar piezas, herrajes, cantidades y relaciones.")
+                lineas.append("El RAG aporta instrucciones del paso pero NO puede contradecir estas identificaciones.")
+
+                piezas_confirmadas = [
+                    p for p in inv.get("piezas", [])
+                    if "confirmado" in p.get("confianza", "")
+                ]
+                if piezas_confirmadas:
+                    lineas.append("IDENTIFICACIONES CONFIRMADAS — PIEZAS:")
+                    for p in piezas_confirmadas:
+                        linea = f"  Pieza {p['id']}: {p.get('descripcion', 'sin descripción')}"
+                        if p.get("cantidad"):
+                            linea += f" × {p['cantidad']}"
+                        if p.get("dimensiones"):
+                            linea += f" ({p['dimensiones']})"
+                        lineas.append(linea)
+
+                herrajes_confirmados = [
+                    h for h in inv.get("herrajes", [])
+                    if "confirmado" in h.get("confianza", "")
+                ]
+                if herrajes_confirmados:
+                    lineas.append("IDENTIFICACIONES CONFIRMADAS — HERRAJES:")
+                    for h in herrajes_confirmados:
+                        linea = f"  {h['letra']} = {h.get('tipo', 'componente')}"
+                        if h.get("descripcion"):
+                            linea += f" ({h['descripcion']})"
+                        if h.get("cantidad"):
+                            linea += f" × {h['cantidad']}"
+                        if h.get("dimensiones"):
+                            linea += f" — {h['dimensiones']}"
+                        lineas.append(linea)
+
+                relaciones = inv.get("relaciones", [])
+                if relaciones:
+                    lineas.append("RELACIONES POR PASO:")
+                    for r in relaciones:
+                        piezas_str = " + ".join([f"pieza {p}" for p in r.get("piezas", [])])
+                        herrajes_str = ", ".join([
+                            f"{h['letra']} × {h.get('cantidad', '?')}"
+                            for h in r.get("herrajes", [])
+                        ])
+                        linea = f"  Paso {r.get('paso', '?')}: {piezas_str}"
+                        if herrajes_str:
+                            linea += f" → {herrajes_str}"
+                        lineas.append(linea)
+
+                no_confirmados = inv.get("no_confirmados", [])
+                if no_confirmados:
+                    lineas.append("IDENTIFICACIONES PRESENTES PERO NO CONFIRMADAS:")
+                    lineas.append(f"  {', '.join(str(x) for x in no_confirmados)}")
+                    lineas.append("  GIA sabe que existen pero NO puede afirmar qué son.")
+                    lineas.append("  Si el usuario pregunta: 'El manual no confirma qué corresponde a [X].'")
+
+            else:
+                # manual antiguo sin inventario — usa parts_list y hardware_list
+                print(f"=== CONTEXT: manual sin inventario estructurado — usando metadata legacy ===")
+                if metadata.parts_list:
+                    partes = ", ".join(str(p) for p in metadata.parts_list[:8])
+                    lineas.append(f"Piezas identificadas: {partes}")
+                if metadata.hardware_list:
+                    herrajes = ", ".join(str(h) for h in metadata.hardware_list[:8])
+                    lineas.append(f"Herrajes identificados: {herrajes}")
+
     if contexto.get("proyectos_anteriores"):
         lineas.append("")
         lineas.append(contexto["proyectos_anteriores"])
 
-    return "\n".join(lineas)
+    return "\n".join(lineas) if lineas else None

@@ -60,16 +60,13 @@ export const Proyecto = () => {
     const [accionAbierta, setAccionAbierta] = useState(false);
     const [convirtiendoGuia, setConvirtiendoGuia] = useState(false);
 
-    // notas
     const [notas, setNotas] = useState([]);
     const [notaNueva, setNotaNueva] = useState("");
     const [guardandoNota, setGuardandoNota] = useState(false);
 
-    // fotos
     const [fotos, setFotos] = useState([]);
     const [subiendoFoto, setSubiendoFoto] = useState(false);
 
-    // progreso
     const [progreso, setProgreso] = useState(0);
 
     useEffect(() => {
@@ -109,6 +106,13 @@ export const Proyecto = () => {
 
     }, [id]);
 
+    // pestañas visibles según contenido real del proyecto
+    const pestanasMostrar = PESTANAS.filter(p => {
+        if (p.id === "fotos") return fotos.length > 0;
+        if (p.id === "manuales") return proyecto?.has_manual;
+        return true;
+    });
+
     const convertirEnGuia = async () => {
         const esGuia = proyecto.category === "guia";
         const mensaje = esGuia
@@ -119,10 +123,7 @@ export const Proyecto = () => {
         try {
             await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/conversations/${id}`, {
                 method: "PATCH",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                },
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
                 body: JSON.stringify({ category: esGuia ? null : "guia" })
             });
             setProyecto(prev => ({ ...prev, category: esGuia ? null : "guia" }));
@@ -249,16 +250,11 @@ export const Proyecto = () => {
                         {proyecto.has_manual && (
                             <span className="text-[10px] font-medium text-noyer dark:text-mantequilla">Manual</span>
                         )}
-                        <span className="text-[10px] text-gris-piedra">
-                            {tiempoRelativo(proyecto.updated_at)}
-                        </span>
-                        <span className="text-[10px] text-gris-piedra">
-                            {mensajes.length} mensajes
-                        </span>
+                        <span className="text-[10px] text-gris-piedra">{tiempoRelativo(proyecto.updated_at)}</span>
+                        <span className="text-[10px] text-gris-piedra">{mensajes.length} mensajes</span>
                     </div>
                 </div>
 
-                {/* convertir en guía / volver a montaje */}
                 <button
                     onClick={convertirEnGuia}
                     disabled={convirtiendoGuia}
@@ -267,7 +263,6 @@ export const Proyecto = () => {
                     {convirtiendoGuia ? "Guardando..." : esGuia ? "← Volver a Mis Montajes" : "Convertir en guía →"}
                 </button>
 
-                {/* barra de progreso */}
                 {progreso > 0 && (
                     <div className="mb-6">
                         <div className="flex items-center justify-between mb-1">
@@ -283,7 +278,6 @@ export const Proyecto = () => {
                     </div>
                 )}
 
-                {/* trabajar sobre este proyecto */}
                 <div className="mb-6">
                     <button
                         onClick={() => setAccionAbierta(!accionAbierta)}
@@ -292,11 +286,7 @@ export const Proyecto = () => {
                         <span className="text-sm font-medium text-ivoire dark:text-ivoire">
                             Trabajar sobre este proyecto
                         </span>
-                        <ChevronDown
-                            size={14}
-                            strokeWidth={1.5}
-                            className={`text-ivoire/60 transition-transform duration-200 ${accionAbierta ? "rotate-180" : ""}`}
-                        />
+                        <ChevronDown size={14} strokeWidth={1.5} className={`text-ivoire/60 transition-transform duration-200 ${accionAbierta ? "rotate-180" : ""}`} />
                     </button>
 
                     {accionAbierta && (
@@ -316,9 +306,9 @@ export const Proyecto = () => {
 
                 <div className="border-t border-douche dark:border-noche-borde mb-6" />
 
-                {/* pestañas */}
+                {/* pestañas — solo las que tienen contenido */}
                 <div className="flex gap-1 mb-6 overflow-x-auto pb-1">
-                    {PESTANAS.map(({ id: pid, label, icono: Icono }) => (
+                    {pestanasMostrar.map(({ id: pid, label, icono: Icono }) => (
                         <button
                             key={pid}
                             onClick={() => setPestanaActiva(pid)}
@@ -452,47 +442,28 @@ export const Proyecto = () => {
                 {/* fotos */}
                 {pestanaActiva === "fotos" && (
                     <div>
-                        <input
-                            ref={fotoInputRef}
-                            type="file"
-                            accept="image/*"
-                            onChange={subirFoto}
-                            className="hidden"
-                        />
+                        <input ref={fotoInputRef} type="file" accept="image/*" onChange={subirFoto} className="hidden" />
                         <button
                             onClick={() => fotoInputRef.current?.click()}
                             disabled={subiendoFoto}
                             className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-douche dark:border-noche-borde text-gris-piedra hover:border-deep-ocean/30 hover:text-deep-ocean dark:hover:text-ivoire transition mb-4 disabled:opacity-40"
                         >
-                            {subiendoFoto ? (
-                                <div className="w-3.5 h-3.5 border border-gris-piedra border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                                <Plus size={14} strokeWidth={1.5} />
-                            )}
+                            {subiendoFoto ? <div className="w-3.5 h-3.5 border border-gris-piedra border-t-transparent rounded-full animate-spin" /> : <Plus size={14} strokeWidth={1.5} />}
                             <span className="text-xs">{subiendoFoto ? "Subiendo..." : "Añadir foto"}</span>
                         </button>
-
-                        {fotos.length === 0 ? (
-                            <p className="text-sm text-gris-piedra text-center py-8">No hay fotos todavía.</p>
-                        ) : (
-                            <div className="grid grid-cols-2 gap-2">
-                                {fotos.map(foto => (
-                                    <div key={foto.id} className="relative group rounded-xl overflow-hidden aspect-square">
-                                        <img
-                                            src={foto.url}
-                                            alt={foto.caption || "foto del proyecto"}
-                                            className="w-full h-full object-cover"
-                                        />
-                                        <button
-                                            onClick={() => borrarFoto(foto.id)}
-                                            className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
-                                        >
-                                            <X size={10} strokeWidth={2} className="text-white" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                        <div className="grid grid-cols-2 gap-2">
+                            {fotos.map(foto => (
+                                <div key={foto.id} className="relative group rounded-xl overflow-hidden aspect-square">
+                                    <img src={foto.url} alt={foto.caption || "foto"} className="w-full h-full object-cover" />
+                                    <button
+                                        onClick={() => borrarFoto(foto.id)}
+                                        className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                                    >
+                                        <X size={10} strokeWidth={2} className="text-white" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
 
@@ -515,20 +486,14 @@ export const Proyecto = () => {
                                 {guardandoNota ? "..." : "Guardar"}
                             </button>
                         </div>
-
                         {notas.length === 0 ? (
                             <p className="text-sm text-gris-piedra text-center py-8">No hay notas todavía.</p>
                         ) : (
                             <div className="space-y-2">
                                 {notas.map(nota => (
                                     <div key={nota.id} className="group flex items-start justify-between px-4 py-3 rounded-xl bg-white dark:bg-noche-suave border border-douche dark:border-noche-borde">
-                                        <p className="text-sm text-deep-ocean dark:text-ivoire leading-relaxed flex-1 mr-3">
-                                            {nota.content}
-                                        </p>
-                                        <button
-                                            onClick={() => borrarNota(nota.id)}
-                                            className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-gris-piedra hover:text-red-500 transition"
-                                        >
+                                        <p className="text-sm text-deep-ocean dark:text-ivoire leading-relaxed flex-1 mr-3">{nota.content}</p>
+                                        <button onClick={() => borrarNota(nota.id)} className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-gris-piedra hover:text-red-500 transition">
                                             <X size={12} strokeWidth={1.5} />
                                         </button>
                                     </div>

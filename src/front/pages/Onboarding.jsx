@@ -31,15 +31,6 @@ const PASOS_PARTICULAR = [
         subtitulo: "Puedes elegir varias opciones.",
         tipo: "multi",
         opciones: ["Montar muebles", "Instalar productos", "Reparar electrodomésticos", "Restaurar muebles", "Decoración", "Bricolaje", "Todo un poco"]
-    },
-    {
-        id: "estilo",
-        titulo: "¿Cómo prefieres que GIA te explique las cosas?",
-        tipo: "multi",
-        opciones: ["Muy detalladamente", "Normal", "Solo lo importante", "Como un profesional"],
-        subtitulo: "¿Cómo prefieres recibir la ayuda?",
-        opciones2: ["Solo texto", "Texto con ejemplos", "Lo más visual posible", "Me da igual"],
-        tipo2: "multi"
     }
 ];
 
@@ -79,8 +70,6 @@ const PASOS_EMPRESA = [
     }
 ];
 
-
-
 export const Onboarding = () => {
     const navigate = useNavigate();
     const [modo, setModo] = useState(null);
@@ -118,7 +107,6 @@ export const Onboarding = () => {
         const perfil = { modo, ...respuestas };
         localStorage.setItem("gia_perfil", JSON.stringify(perfil));
 
-        // guardo también en BD si hay token
         const token = localStorage.getItem("token");
         if (token) {
             try {
@@ -134,7 +122,7 @@ export const Onboarding = () => {
                         wall_types: respuestas.vivienda_2 || [],
                         tools_available: respuestas.herramientas || [],
                         interests: respuestas.intereses || [],
-                        help_style: respuestas.estilo,
+                        help_style: respuestas.estilo, // conservado — aunque estilo ya no se recoge en el onboarding, el campo sigue existiendo en BD
                         sector: respuestas.sector,
                         team_size: respuestas.equipo
                     })
@@ -329,7 +317,6 @@ export const Onboarding = () => {
                     {pasoActual === pasos.length - 1 ? "Ver mi perfil" : "Continuar"}
                     <ArrowRight size={14} strokeWidth={1.5} />
                 </button>
-
             </div>
         </div>
     );
