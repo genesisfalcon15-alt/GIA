@@ -8,6 +8,7 @@ verify_ssl = true
 [packages]
 flask-swagger = "*"
 gunicorn = "*"
+pyyaml = ">=6.0.1"
 flask-admin = "==2.0.0"
 typing-extensions = "*"
 wtforms = "==3.1.2"
