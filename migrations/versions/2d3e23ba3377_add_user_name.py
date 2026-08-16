@@ -34,6 +34,7 @@ def upgrade():
     sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+
     op.create_table('project_item',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('project_id', sa.Integer(), nullable=False),
@@ -46,6 +47,7 @@ def upgrade():
     sa.ForeignKeyConstraint(['project_id'], ['project.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+
     op.create_table('project_tool',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('project_id', sa.Integer(), nullable=False),
@@ -55,6 +57,7 @@ def upgrade():
     sa.ForeignKeyConstraint(['user_tool_id'], ['user_tool.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+
     op.create_table('project_transformation',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('project_id', sa.Integer(), nullable=False),
@@ -66,10 +69,11 @@ def upgrade():
     sa.PrimaryKeyConstraint('id')
     )
 
-    # Crear progress únicamente si todavía no existe.
+    # Crear las columnas solo si todavía no existen.
     # Esto permite que la migración funcione también sobre una BD nueva.
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+
     project_columns = {
         column["name"]
         for column in inspector.get_columns("project")
@@ -86,30 +90,71 @@ def upgrade():
             )
         )
 
+    if "time_invested" not in project_columns:
+        op.add_column(
+            "project",
+            sa.Column(
+                "time_invested",
+                sa.INTEGER(),
+                nullable=False,
+                server_default=sa.text("0")
+            )
+        )
+
     with op.batch_alter_table('project', schema=None) as batch_op:
-        batch_op.alter_column('progress',
-               existing_type=sa.INTEGER(),
-               nullable=False,
-               existing_server_default=sa.text('0'))
-        batch_op.alter_column('time_invested',
-               existing_type=sa.INTEGER(),
-               nullable=False,
-               existing_server_default=sa.text('0'))
+        batch_op.alter_column(
+            'progress',
+            existing_type=sa.INTEGER(),
+            nullable=False,
+            existing_server_default=sa.text('0')
+        )
+        batch_op.alter_column(
+            'time_invested',
+            existing_type=sa.INTEGER(),
+            nullable=False,
+            existing_server_default=sa.text('0')
+        )
 
     with op.batch_alter_table('project_note', schema=None) as batch_op:
-        batch_op.drop_constraint(batch_op.f('project_note_project_id_fkey'), type_='foreignkey')
-        batch_op.create_foreign_key(None, 'project', ['project_id'], ['id'])
+        batch_op.drop_constraint(
+            batch_op.f('project_note_project_id_fkey'),
+            type_='foreignkey'
+        )
+        batch_op.create_foreign_key(
+            None,
+            'project',
+            ['project_id'],
+            ['id']
+        )
 
     with op.batch_alter_table('project_photo', schema=None) as batch_op:
-        batch_op.drop_constraint(batch_op.f('project_photo_project_id_fkey'), type_='foreignkey')
-        batch_op.create_foreign_key(None, 'project', ['project_id'], ['id'])
+        batch_op.drop_constraint(
+            batch_op.f('project_photo_project_id_fkey'),
+            type_='foreignkey'
+        )
+        batch_op.create_foreign_key(
+            None,
+            'project',
+            ['project_id'],
+            ['id']
+        )
 
     with op.batch_alter_table('project_timeline', schema=None) as batch_op:
-        batch_op.drop_constraint(batch_op.f('project_timeline_project_id_fkey'), type_='foreignkey')
-        batch_op.create_foreign_key(None, 'project', ['project_id'], ['id'])
+        batch_op.drop_constraint(
+            batch_op.f('project_timeline_project_id_fkey'),
+            type_='foreignkey'
+        )
+        batch_op.create_foreign_key(
+            None,
+            'project',
+            ['project_id'],
+            ['id']
+        )
 
     with op.batch_alter_table('user', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('name', sa.String(length=100), nullable=True))
+        batch_op.add_column(
+            sa.Column('name', sa.String(length=100), nullable=True)
+        )
 
     # ### end Alembic commands ###
 
@@ -120,26 +165,57 @@ def downgrade():
         batch_op.drop_column('name')
 
     with op.batch_alter_table('project_timeline', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.create_foreign_key(batch_op.f('project_timeline_project_id_fkey'), 'project', ['project_id'], ['id'], ondelete='CASCADE')
+        batch_op.drop_constraint(
+            None,
+            type_='foreignkey'
+        )
+        batch_op.create_foreign_key(
+            batch_op.f('project_timeline_project_id_fkey'),
+            'project',
+            ['project_id'],
+            ['id'],
+            ondelete='CASCADE'
+        )
 
     with op.batch_alter_table('project_photo', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.create_foreign_key(batch_op.f('project_photo_project_id_fkey'), 'project', ['project_id'], ['id'], ondelete='CASCADE')
+        batch_op.drop_constraint(
+            None,
+            type_='foreignkey'
+        )
+        batch_op.create_foreign_key(
+            batch_op.f('project_photo_project_id_fkey'),
+            'project',
+            ['project_id'],
+            ['id'],
+            ondelete='CASCADE'
+        )
 
     with op.batch_alter_table('project_note', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.create_foreign_key(batch_op.f('project_note_project_id_fkey'), 'project', ['project_id'], ['id'], ondelete='CASCADE')
+        batch_op.drop_constraint(
+            None,
+            type_='foreignkey'
+        )
+        batch_op.create_foreign_key(
+            batch_op.f('project_note_project_id_fkey'),
+            'project',
+            ['project_id'],
+            ['id'],
+            ondelete='CASCADE'
+        )
 
     with op.batch_alter_table('project', schema=None) as batch_op:
-        batch_op.alter_column('time_invested',
-               existing_type=sa.INTEGER(),
-               nullable=True,
-               existing_server_default=sa.text('0'))
-        batch_op.alter_column('progress',
-               existing_type=sa.INTEGER(),
-               nullable=True,
-               existing_server_default=sa.text('0'))
+        batch_op.alter_column(
+            'time_invested',
+            existing_type=sa.INTEGER(),
+            nullable=True,
+            existing_server_default=sa.text('0')
+        )
+        batch_op.alter_column(
+            'progress',
+            existing_type=sa.INTEGER(),
+            nullable=True,
+            existing_server_default=sa.text('0')
+        )
 
     op.drop_table('project_transformation')
     op.drop_table('project_tool')
