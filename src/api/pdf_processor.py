@@ -8,7 +8,6 @@ import anthropic
 from io import BytesIO
 from api.models import db, Manual, ManualChunk, ManualMetadata
 
-# carga lazy para que flask arranque aunque torch/numpy estén rotos
 try:
     from sentence_transformers import SentenceTransformer
     embeddings_model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -25,27 +24,25 @@ def extraer_metadata_con_groq(texto_completo):
     """
     try:
         texto_muestra = texto_completo[:3000]
-
         if len(texto_muestra.strip()) < 100:
-            print("=== METADATA: texto insuficiente ===")
             return None
 
-        prompt = f"""Analiza este fragmento de un manual de montaje y extrae información estructurada.
-Si un campo no aparece en el texto, usa null.
-Responde ÚNICAMENTE con JSON válido, sin texto antes ni después.
+        prompt = f"""Analyze this assembly manual fragment and extract structured information.
+If a field is not present in the text, use null.
+Respond ONLY with valid JSON, no text before or after.
 
-Texto del manual:
+Manual text:
 {texto_muestra}
 
-JSON esperado:
+Expected JSON:
 {{
-  "tools_required": ["herramientas mencionadas"],
-  "parts_list": ["piezas o componentes mencionados"],
-  "hardware_list": ["tornillos, tuercas, anclajes mencionados"],
+  "tools_required": ["tools mentioned"],
+  "parts_list": ["parts or components mentioned"],
+  "hardware_list": ["screws, nuts, anchors mentioned"],
   "total_steps": null,
-  "safety_warnings": ["advertencias de seguridad mencionadas"],
+  "safety_warnings": ["safety warnings mentioned"],
   "estimated_time": null,
-  "difficulty": "facil"
+  "difficulty": "easy"
 }}"""
 
         response = requests.post(
@@ -64,7 +61,6 @@ JSON esperado:
         )
 
         if response.status_code != 200:
-            print(f"=== METADATA: error de groq {response.status_code} ===")
             return None
 
         raw = response.json()["choices"][0]["message"]["content"]
@@ -84,16 +80,13 @@ JSON esperado:
 
 def rasterizar_paginas(pdf_content):
     """
-    convierte páginas del pdf a imágenes base64 usando PyMuPDF (fitz).
-    devuelve lista de {"pagina": N, "imagen_b64": "..."}.
-    si fitz no está disponible devuelve lista vacía.
+    convierte páginas del pdf a imágenes base64 usando PyMuPDF.
     """
     try:
-        import fitz  # PyMuPDF
+        import fitz
         paginas = []
         doc = fitz.open(stream=pdf_content, filetype="pdf")
         for num, pagina in enumerate(doc):
-            # resolución 150 DPI — suficiente para identificar letras y números
             mat = fitz.Matrix(150 / 72, 150 / 72)
             pix = pagina.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
             img_bytes = pix.tobytes("png")
@@ -103,173 +96,287 @@ def rasterizar_paginas(pdf_content):
         print(f"=== VISION: {len(paginas)} páginas rasterizadas ===")
         return paginas
     except ImportError:
-        print("=== VISION: PyMuPDF no disponible — análisis solo texto ===")
+        print("=== VISION: PyMuPDF no disponible ===")
         return []
     except Exception as e:
         print(f"=== VISION: error rasterizando — {e} ===")
         return []
 
 
+def _parsear_json_bloque(raw):
+    """
+    parsea json de un bloque — solo acepta json completo y válido.
+    """
+    inicio = raw.find("{")
+    fin = raw.rfind("}") + 1
+    if inicio == -1 or fin <= inicio:
+        return None
+    try:
+        resultado = json.loads(raw[inicio:fin])
+        if not isinstance(resultado, dict):
+            return None
+        return resultado
+    except json.JSONDecodeError as e:
+        print(f"=== VISION BLOQUE: JSON inválido — {e} ===")
+        return None
+
+
+def _validar_bloque(bloque):
+    """
+    valida que el bloque tenga estructura mínima.
+    """
+    if not isinstance(bloque, dict):
+        return False
+    if "herrajes" not in bloque and "piezas" not in bloque:
+        return False
+    return True
+
+
+def _combinar_inventarios(bloques):
+    """
+    combina resultados de múltiples bloques en un único inventario.
+    consolida herrajes y piezas duplicados.
+    """
+    inventario_final = {
+        "producto": None,
+        "piezas": [],
+        "herrajes": [],
+        "relaciones": [],
+        "no_confirmados": []
+    }
+
+    piezas_vistas = {}
+    herrajes_vistos = {}
+    no_confirmados_set = set()
+
+    for bloque in bloques:
+        if not bloque:
+            continue
+
+        if not inventario_final["producto"] and bloque.get("producto"):
+            inventario_final["producto"] = bloque["producto"]
+
+        for pieza in bloque.get("piezas", []):
+            pid = str(pieza.get("id", "")).strip()
+            if not pid:
+                continue
+            if pid not in piezas_vistas:
+                piezas_vistas[pid] = pieza
+            else:
+                existente = piezas_vistas[pid]
+                paginas_nuevas = pieza.get("paginas", [])
+                existente["paginas"] = list(set(existente.get("paginas", []) + paginas_nuevas))
+                if "texto_y_visual" in pieza.get("confianza", "") and "texto_y_visual" not in existente.get("confianza", ""):
+                    existente["confianza"] = pieza["confianza"]
+
+        for herraje in bloque.get("herrajes", []):
+            letra = str(herraje.get("letra", "")).strip().upper()
+            if not letra:
+                continue
+            if letra not in herrajes_vistos:
+                herrajes_vistos[letra] = herraje
+            else:
+                existente = herrajes_vistos[letra]
+                paginas_nuevas = herraje.get("paginas", [])
+                existente["paginas"] = list(set(existente.get("paginas", []) + paginas_nuevas))
+                if "texto_y_visual" in herraje.get("confianza", "") and "texto_y_visual" not in existente.get("confianza", ""):
+                    existente["confianza"] = herraje["confianza"]
+                if herraje.get("cantidad") and not existente.get("cantidad"):
+                    existente["cantidad"] = herraje["cantidad"]
+
+        pasos_existentes = {r.get("paso") for r in inventario_final["relaciones"]}
+        for rel in bloque.get("relaciones", []):
+            if rel.get("paso") not in pasos_existentes:
+                inventario_final["relaciones"].append(rel)
+                pasos_existentes.add(rel.get("paso"))
+
+        for nc in bloque.get("no_confirmados", []):
+            no_confirmados_set.add(str(nc))
+
+    inventario_final["piezas"] = list(piezas_vistas.values())
+    inventario_final["herrajes"] = list(herrajes_vistos.values())
+    inventario_final["no_confirmados"] = list(no_confirmados_set)
+
+    return inventario_final
+
+
+def _extraer_bloque_con_haiku(client, texto_bloque, paginas_bloque, num_bloque):
+    """
+    extrae inventario de un bloque de 4 páginas con claude haiku.
+    prompt compacto — solo datos estructurados.
+    funciona con manuales en cualquier idioma.
+    """
+    prompt_sistema = """You are an assembly manual analysis system.
+Extract ONLY components that appear clearly in the manual pages.
+NEVER invent parts, letters, quantities or relations.
+Respond ONLY with valid compact JSON. No text before or after. No code blocks.
+The manual may be in any language. Extract data regardless of language."""
+
+    contenido = []
+
+    contenido.append({
+        "type": "text",
+        "text": f"""Analyze these assembly manual pages (block {num_bloque}).
+Extract ONLY what clearly appears. Use confidence levels:
+- "confirmado_manual_texto" = clear in text
+- "confirmado_manual_visual" = clear in image/diagram
+- "confirmado_manual_texto_y_visual" = both
+- "no_confirmado" = inferred only
+
+Text from these pages:
+{texto_bloque[:2000]}
+
+Return ONLY this compact JSON structure:
+{{"piezas":[{{"id":"6","descripcion":"left panel","cantidad":1,"confianza":"confirmado_manual_visual","paginas":[3]}}],"herrajes":[{{"letra":"A","tipo":"screw","descripcion":"fixing screw","dimensiones":null,"cantidad":10,"confianza":"confirmado_manual_texto","paginas":[2]}}],"relaciones":[{{"paso":1,"piezas":["6","7"],"herrajes":[{{"letra":"A","cantidad":4}}],"paginas":[5],"confianza":"confirmado_manual"}}],"no_confirmados":[]}}
+
+Use [] for empty arrays. Only include what you can confirm from these pages."""
+    })
+
+    for p in paginas_bloque:
+        contenido.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": p["imagen_b64"]
+            }
+        })
+        contenido.append({
+            "type": "text",
+            "text": f"[Page {p['pagina']}]"
+        })
+
+    try:
+        mensaje = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=4096,
+            system=prompt_sistema,
+            messages=[{"role": "user", "content": contenido}],
+            timeout=45.0
+        )
+
+        raw = mensaje.content[0].text
+        print(f"=== VISION BLOQUE {num_bloque}: {len(raw)} chars ===")
+
+        resultado = _parsear_json_bloque(raw)
+        if not resultado:
+            print(f"=== VISION BLOQUE {num_bloque}: JSON inválido — descartando ===")
+            return None
+
+        if not _validar_bloque(resultado):
+            print(f"=== VISION BLOQUE {num_bloque}: estructura inválida — descartando ===")
+            return None
+
+        resultado.setdefault("piezas", [])
+        resultado.setdefault("herrajes", [])
+        resultado.setdefault("relaciones", [])
+        resultado.setdefault("no_confirmados", [])
+
+        print(f"=== VISION BLOQUE {num_bloque}: {len(resultado['piezas'])} piezas, {len(resultado['herrajes'])} herrajes ===")
+        return resultado
+
+    except anthropic.APITimeoutError:
+        print(f"=== VISION BLOQUE {num_bloque}: timeout — descartando ===")
+        return None
+    except Exception as e:
+        print(f"=== VISION BLOQUE {num_bloque}: error — {e} ===")
+        return None
+
+
 def extraer_inventario_con_vision(texto_completo, paginas_imagenes):
     """
-    extrae el inventario estructurado del manual usando Claude Haiku.
-    combina texto completo + imágenes de todas las páginas en una sola llamada.
-    devuelve dict con piezas, herrajes, relaciones o None si falla.
-
-    regla crítica: solo incluye elementos que aparecen claramente en el manual.
-    nunca inventa identificaciones. si no está confirmado, usa confianza "no_confirmado".
+    extrae inventario procesando páginas en bloques de 4.
+    combina resultados en python.
+    funciona con manuales en cualquier idioma.
     """
     try:
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-        prompt_sistema = """Eres un sistema de análisis de manuales de montaje.
-Tu única tarea es identificar con precisión los componentes del producto a partir del manual.
+        # divido texto por páginas
+        texto_por_pagina = {}
+        lineas = texto_completo.split("\n")
+        pagina_actual = 1
+        buffer = []
+        for linea in lineas:
+            if linea.startswith("--- Página "):
+                try:
+                    num = int(linea.replace("--- Página ", "").replace(" ---", "").strip())
+                    if buffer:
+                        texto_por_pagina[pagina_actual] = "\n".join(buffer)
+                    pagina_actual = num
+                    buffer = []
+                except ValueError:
+                    buffer.append(linea)
+            else:
+                buffer.append(linea)
+        if buffer:
+            texto_por_pagina[pagina_actual] = "\n".join(buffer)
 
-REGLA ABSOLUTA: Solo incluyes información que aparezca claramente en el manual.
-NUNCA inventes piezas, letras, cantidades o relaciones.
-NUNCA asumas lo que "suele tener" un mueble de este tipo.
-Si no puedes confirmar una identificación con evidencia del manual: usa confianza "no_confirmado".
+        # bloques de 4 páginas
+        tamanio_bloque = 4
+        bloques_resultados = []
+        total_paginas = len(paginas_imagenes) if paginas_imagenes else 0
 
-Para cada elemento que identifies, indica la fuente:
-- "confirmado_manual_texto" — aparece claramente en texto
-- "confirmado_manual_visual" — aparece claramente en imagen/diagrama
-- "confirmado_manual_texto_y_visual" — aparece en ambos
-- "no_confirmado" — inferido, no confirmado directamente
+        if total_paginas == 0:
+            print("=== VISION: procesando solo texto ===")
+            resultado = _extraer_bloque_con_haiku(client, texto_completo[:4000], [], 1)
+            if resultado:
+                bloques_resultados.append(resultado)
+        else:
+            num_bloques = (total_paginas + tamanio_bloque - 1) // tamanio_bloque
+            print(f"=== VISION: {total_paginas} páginas → {num_bloques} bloques de {tamanio_bloque} ===")
 
-Responde ÚNICAMENTE con JSON válido. Sin texto antes ni después. Sin bloques de código."""
+            for i in range(0, total_paginas, tamanio_bloque):
+                bloque_paginas = paginas_imagenes[i:i + tamanio_bloque]
+                nums_paginas = [p["pagina"] for p in bloque_paginas]
 
-        # construyo el contenido multimodal — texto + todas las imágenes
-        contenido = []
+                texto_bloque = "\n".join([
+                    texto_por_pagina.get(num, "")
+                    for num in nums_paginas
+                ])
 
-        # texto completo del manual
-        contenido.append({
-            "type": "text",
-            "text": f"""Analiza este manual de montaje y extrae el inventario completo de componentes.
+                num_bloque = (i // tamanio_bloque) + 1
+                print(f"=== VISION: bloque {num_bloque}/{num_bloques} — páginas {nums_paginas} ===")
 
-TEXTO EXTRAÍDO DEL MANUAL:
-{texto_completo[:8000]}
+                resultado = _extraer_bloque_con_haiku(client, texto_bloque, bloque_paginas, num_bloque)
+                if resultado:
+                    bloques_resultados.append(resultado)
 
-INSTRUCCIÓN: Analiza también las imágenes adjuntas de cada página para identificar:
-- Números de pieza y sus descripciones
-- Letras de herrajes (A, B, C, J...) y qué son exactamente
-- Cantidades de cada componente
-- Relaciones entre piezas y herrajes en cada paso
-
-Devuelve EXACTAMENTE este JSON (con los datos reales del manual):
-{{
-  "producto": "nombre del producto si se identifica",
-  "piezas": [
-    {{
-      "id": "número o código de la pieza",
-      "descripcion": "descripción según el manual",
-      "cantidad": 1,
-      "dimensiones": null,
-      "confianza": "confirmado_manual_texto_y_visual",
-      "paginas": [3]
-    }}
-  ],
-  "herrajes": [
-    {{
-      "letra": "A",
-      "tipo": "tornillo",
-      "descripcion": "descripción según el manual",
-      "dimensiones": null,
-      "cantidad": 10,
-      "confianza": "confirmado_manual_texto",
-      "paginas": [2]
-    }}
-  ],
-  "relaciones": [
-    {{
-      "paso": 1,
-      "piezas": ["6", "7"],
-      "herrajes": [{{"letra": "J", "cantidad": 4}}],
-      "paginas": [5],
-      "confianza": "confirmado_manual"
-    }}
-  ],
-  "no_confirmados": ["lista de letras o piezas que aparecen pero no se pueden identificar con certeza"]
-}}
-
-Si no existe evidencia suficiente para un campo, usa array vacío [].
-NUNCA rellenes con suposiciones."""
-        })
-
-        # añado todas las imágenes disponibles
-        for p in paginas_imagenes:
-            contenido.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": p["imagen_b64"]
-                }
-            })
-            contenido.append({
-                "type": "text",
-                "text": f"[Imagen de la página {p['pagina']}]"
-            })
-
-        print(f"=== VISION: enviando {len(paginas_imagenes)} páginas a Claude Haiku ===")
-
-        mensaje = client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=2000,
-            system=prompt_sistema,
-            messages=[{"role": "user", "content": contenido}],
-            timeout=60.0
-        )
-
-        raw = mensaje.content[0].text
-        print(f"=== VISION: respuesta recibida ({len(raw)} chars) ===")
-
-        inicio = raw.find("{")
-        fin = raw.rfind("}") + 1
-        if inicio == -1 or fin <= inicio:
-            print("=== VISION: respuesta no contiene JSON válido ===")
+        if not bloques_resultados:
+            print("=== VISION: todos los bloques fallaron ===")
             return None
 
-        inventario = json.loads(raw[inicio:fin])
+        inventario_final = _combinar_inventarios(bloques_resultados)
 
-        # validación básica de estructura
-        if not isinstance(inventario, dict):
+        total = len(inventario_final["piezas"]) + len(inventario_final["herrajes"])
+        print(f"=== VISION: inventario final — {len(inventario_final['piezas'])} piezas, {len(inventario_final['herrajes'])} herrajes, {len(inventario_final['relaciones'])} relaciones ===")
+
+        if total == 0:
+            print("=== VISION: inventario vacío ===")
             return None
 
-        # normalizo campos obligatorios
-        inventario.setdefault("piezas", [])
-        inventario.setdefault("herrajes", [])
-        inventario.setdefault("relaciones", [])
-        inventario.setdefault("no_confirmados", [])
+        return inventario_final
 
-        total = len(inventario["piezas"]) + len(inventario["herrajes"])
-        print(f"=== VISION: inventario extraído — {len(inventario['piezas'])} piezas, {len(inventario['herrajes'])} herrajes, {len(inventario['relaciones'])} relaciones ===")
-
-        return inventario
-
-    except anthropic.APITimeoutError:
-        print("=== VISION: timeout de 60s — inventario no disponible ===")
-        return None
     except Exception as e:
-        print(f"=== VISION: error extrayendo inventario — {e} ===")
+        print(f"=== VISION: error general — {e} ===")
         traceback.print_exc()
         return None
 
 
 def extraer_y_trocear_pdf(pdf_content, manual_id):
     """
-    flujo completo de procesamiento del pdf:
-    1. extrae texto página a página
-    2. genera chunks y embeddings → commit inmediato
-    3. rasteriza páginas para análisis visual
-    4. extrae inventario estructurado con Claude Haiku (texto + visión)
-    5. extrae metadata general con Groq
-    6. persiste todo en ManualMetadata
+    flujo completo:
+    1. extrae texto
+    2. genera chunks y embeddings
+    3. rasteriza páginas
+    4. extrae inventario en bloques de 4 páginas
+    5. extrae metadata con groq
+    6. persiste todo
     7. marca manual como listo
     """
     manual = Manual.query.get(manual_id)
 
     try:
-        # extracción de texto página a página
         pdf_file = BytesIO(pdf_content)
         reader = PyPDF2.PdfReader(pdf_file)
 
@@ -282,9 +389,8 @@ def extraer_y_trocear_pdf(pdf_content, manual_id):
         print(f"=== PDF: {len(reader.pages)} páginas, {len(texto_completo)} caracteres ===")
 
         if not texto_completo.strip():
-            raise Exception("el pdf no contiene texto extraíble — puede ser un pdf escaneado")
+            raise Exception("el pdf no contiene texto extraíble")
 
-        # chunking para RAG
         palabras = texto_completo.split()
         tamanio_chunk = 200
         chunks = []
@@ -303,23 +409,18 @@ def extraer_y_trocear_pdf(pdf_content, manual_id):
                 embedding=embedding
             ))
 
-        # commit de chunks antes de llamar a modelos externos
         manual.total_chunks = len(chunks)
         db.session.commit()
         print(f"=== CHUNKS: {len(chunks)} guardados ===")
 
-        # rasterización de páginas para análisis visual
         paginas_imagenes = rasterizar_paginas(pdf_content)
 
-        # extracción de inventario estructurado con Claude Haiku (texto + visión)
-        print(f"=== INVENTARIO: iniciando extracción para manual {manual_id} ===")
+        print(f"=== INVENTARIO: iniciando para manual {manual_id} ===")
         inventario = extraer_inventario_con_vision(texto_completo, paginas_imagenes)
 
-        # extracción de metadata general con Groq
-        print(f"=== METADATA: iniciando extracción para manual {manual_id} ===")
+        print(f"=== METADATA: iniciando para manual {manual_id} ===")
         metadata_data = extraer_metadata_con_groq(texto_completo)
 
-        # persisto todo en ManualMetadata
         existing = ManualMetadata.query.filter_by(manual_id=manual_id).first()
         if not existing:
             db.session.add(ManualMetadata(
@@ -335,7 +436,6 @@ def extraer_y_trocear_pdf(pdf_content, manual_id):
             ))
             print(f"=== METADATA: guardada {'con inventario' if inventario else 'sin inventario'} ===")
         else:
-            # actualizo inventario si ya existía metadata
             existing.components_inventory = inventario
             if metadata_data:
                 existing.tools_required = metadata_data.get("tools_required")
