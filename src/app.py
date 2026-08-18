@@ -23,7 +23,6 @@ static_file_dir = os.path.join(os.path.dirname(
 app = Flask(__name__)
 app.url_map.strict_slashes = False
 
-# configuracion de la base de datos
 db_url = os.getenv("DATABASE_URL")
 if db_url is not None:
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url.replace(
@@ -39,12 +38,8 @@ app.config["JWT_SECRET_KEY"] = os.getenv("FLASK_APP_KEY")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
 jwt = JWTManager(app)
 
-# cors — origen controlado por variable de entorno
-# en desarrollo usa localhost, en producción usa la url real del frontend
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-CORS(app, origins=[frontend_url])
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-# limiter disponible para los endpoints que lo necesiten
 limiter = Limiter(
     get_remote_address,
     app=app,
@@ -56,9 +51,11 @@ setup_admin(app)
 setup_commands(app)
 app.register_blueprint(api, url_prefix='/api')
 
+
 @app.errorhandler(APIException)
 def handle_invalid_usage(error):
     return jsonify(error.to_dict()), error.status_code
+
 
 @app.errorhandler(429)
 def rate_limit_exceeded(e):
@@ -67,11 +64,13 @@ def rate_limit_exceeded(e):
         "error": "rate_limit_exceeded"
     }), 429
 
+
 @app.route('/')
 def sitemap():
     if ENV == "development":
         return generate_sitemap(app)
     return send_from_directory(static_file_dir, 'index.html')
+
 
 @app.route('/<path:path>', methods=['GET'])
 def serve_any_other_file(path):
@@ -80,6 +79,7 @@ def serve_any_other_file(path):
     response = send_from_directory(static_file_dir, path)
     response.cache_control.max_age = 0
     return response
+
 
 if __name__ == '__main__':
     PORT = int(os.environ.get('PORT', 3001))
