@@ -1,3 +1,4 @@
+cat > /Users/genesisurbina/Desktop/MONTIA/MontIA/render_build.sh << 'ENDOFFILE'
 #!/usr/bin/env bash
 set -o errexit
 
@@ -19,4 +20,5 @@ with app.app_context():
         print(f'no se pudo limpiar: {e}')
 " && cd ..
 
-cd src && pipenv run flask --app app db upgrade && cd ..
+cd src && pipenv run flask --app app db upgrade heads && cd ..
+ENDOFFILE
