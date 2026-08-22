@@ -228,17 +228,17 @@ def construir_contexto_vision(project):
 
     return "\n".join(partes) if partes else None
 
-
 @chat_bp.route('', methods=['POST'])
 @jwt_required()
 def send_message():
     user_id = int(get_jwt_identity())
 
-    body = request.get_json(silent=True)
-    if not body or not body.get("message"):
+    body = request.get_json(silent=True) or {}
+    user_message = body.get("message") or body.get("prompt") or body.get("content") or body.get("text")
+    
+    if not user_message:
         raise APIException("necesito un mensaje", status_code=400)
 
-    user_message = body.get("message")
     conversation_id = body.get("conversation_id")
 
     current_time = body.get("current_time", "")
