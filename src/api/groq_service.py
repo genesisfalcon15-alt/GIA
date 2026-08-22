@@ -3,7 +3,7 @@ import json
 import requests
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "openai/gpt-oss-20b"
 
 GIA_SYSTEM_PROMPT = """Eres GIA, asistente inteligente para el hogar. Ayudas con montaje, instalación, reparación, restauración, mantenimiento y electrodomésticos.
 
@@ -34,6 +34,23 @@ Frases cortas. Sin asteriscos ni negritas. Sin cuestionarios. Sin estructuras r�
 Varía el lenguaje. No repitas las mismas frases.
 
 ---
+
+PREFERENCIAS DEL USUARIO
+
+Cuando el contexto incluya PREFERENCIAS DEL USUARIO, úsalas siempre:
+- Si prefiere detalle → explica cada paso con calma
+- Si prefiere directo → ve al grano sin rodeos
+- Si prefiere ejemplos → ilustra con casos concretos
+- Si prefiere visual → describe posiciones y orientaciones con claridad
+
+Durante el montaje, cada 3-4 pasos pregunta de forma natural:
+"¿Vas bien?" o "¿Seguimos?" o "¿Necesitas que explique algo mejor?"
+
+Si el usuario parece confundido o tarda → ofrece más detalle sin que lo pida.
+Si el usuario va rápido y seguro → abrevia y avanza.
+
+---
+
 PREGUNTAS DE PREFERENCIA — PRIMERA CONVERSACIÓN
 
 Si el contexto indica PRIMERA_CONVERSACION=true:
@@ -51,8 +68,8 @@ El flujo correcto es:
    Para particulares — varía entre estos estilos:
    "Hola, soy GIA. ¿Qué vas a montar, reparar o rescatar hoy?"
    "Hola, soy GIA. ¿Qué has descubierto hoy en tus andadas?"
-   "Hola, veo que es un proyecto nuevo — ¿qué has comprado? ¿Me mandas mas fotos?"
-   "Hola, cuéntame  ¿En qué puedo echarte una mano?"
+   "Hola, veo que es un proyecto nuevo — ¿qué has comprado?"
+   "Hola, cuéntame — ¿en qué puedo echarte una mano?"
    "Hola, ¿qué mueble o proyecto tienes entre manos?"
 
    Para empresas o profesionales — varía entre estos estilos:
@@ -93,7 +110,7 @@ El flujo correcto es:
    C) Lo más visual posible
    D) Me da igual"
 
-4. Cuando responda las tres, cierra con algo natural y sigue adelante:
+4. Cuando el usuario responda las tres, cierra con algo natural y sigue adelante:
    "Perfecto, ya sé cómo ayudarte mejor."
    Y continúa con la tarea sin volver a preguntar nunca más.
 
@@ -173,16 +190,14 @@ Cada conversación tiene memoria independiente."""
 def send_message(messages, context=None, manual_info=None, is_first_message=False, nivel_asistencia=None, primera_conversacion=False, preferencias_usuario=None):
     """
     envía un mensaje a groq con todas las capas de contexto.
-    primera_conversacion=True → GIA hace las 3 preguntas de preferencia.
-    preferencias_usuario → GIA adapta su estilo según las preferencias guardadas.
+    primera_conversacion=True → GIA hace las preguntas de preferencia.
+    preferencias_usuario → GIA adapta su estilo.
     """
     system_content = GIA_SYSTEM_PROMPT
 
-    # inyecto flag de primera conversación para que GIA haga las preguntas
     if primera_conversacion:
         system_content += "\n\nPRIMERA_CONVERSACION=true"
 
-    # inyecto preferencias si existen
     if preferencias_usuario:
         system_content += f"\n\n# PREFERENCIAS DEL USUARIO\n{preferencias_usuario}"
 
@@ -229,7 +244,7 @@ Responde SIEMPRE en este formato JSON exacto, sin texto adicional, sin asterisco
             "temperature": 0.4,
             "max_tokens": 800
         },
-        timeout=30
+        timeout=60
     )
 
     if response.status_code != 200:
@@ -238,6 +253,11 @@ Responde SIEMPRE en este formato JSON exacto, sin texto adicional, sin asterisco
     data = response.json()
     raw_content = data["choices"][0]["message"]["content"]
     tokens_used = data.get("usage", {}).get("total_tokens", 0)
+
+    # elimino bloques de thinking si el modelo los incluye
+    if "<think>" in raw_content:
+        import re
+        raw_content = re.sub(r'<think>.*?</think>', '', raw_content, flags=re.DOTALL).strip()
 
     if is_first_message:
         try:
@@ -269,6 +289,14 @@ Responde SIEMPRE en este formato JSON exacto, sin texto adicional, sin asterisco
                 "tokens_used": tokens_used
             }
 
+    if raw_content.strip().startswith("{"):
+        try:
+            parsed = json.loads(raw_content.strip())
+            if "response" in parsed:
+                raw_content = parsed["response"]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            pass
+
     return {
         "response": raw_content.replace("**", ""),
         "title": None,
@@ -277,8 +305,4 @@ Responde SIEMPRE en este formato JSON exacto, sin texto adicional, sin asterisco
 
 
 def send_image_message(image_url, historial=None):
-    """legacy — mantenida por compatibilidad."""
-    return {
-        "response": "No pude analizar la imagen en este momento.",
-        "tokens_used": 0
-    }
+    raise NotImplementedError("send_image_message no está implementado todavía")

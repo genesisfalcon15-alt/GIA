@@ -23,7 +23,7 @@ const PASOS_PARTICULAR = [
         titulo: "¿Qué herramientas tienes disponibles?",
         subtitulo: "Elige todas las que tengas.",
         tipo: "multi",
-        opciones: ["Taladro", "Atornillador", "Destornilladores", "Llaves Allen", "Nivel", "Metro", "Martillo", "Sierra", "Detector de cables", "Escalera", "Ninguna"]
+        opciones: ["Taladro", "Destornilladores", "Llaves Allen", "Nivel", "Metro", "Martillo", "Sierra", "Detector de cables", "Escalera", "Ninguna"]
     },
     {
         id: "intereses",

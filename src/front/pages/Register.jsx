@@ -1,20 +1,32 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { LogoGia } from "../components/LogoGia";
+import { Eye, EyeOff } from "lucide-react";
 
 export const Register = () => {
     const navigate = useNavigate();
     const [nombre, setNombre] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [cargando, setCargando] = useState(false);
+    const [isDark, setIsDark] = useState(
+        document.documentElement.classList.contains("dark")
+    );
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+    useEffect(() => {
+        const observer = new MutationObserver(() => {
+            setIsDark(document.documentElement.classList.contains("dark"));
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+        return () => observer.disconnect();
+    }, []);
+
+    const handleSubmit = async () => {
         if (!email.trim() || !password.trim()) return;
         setCargando(true);
         setError("");
-
         try {
             const response = await fetch(
                 `${import.meta.env.VITE_BACKEND_URL}/api/auth/register`,
@@ -28,18 +40,14 @@ export const Register = () => {
                     })
                 }
             );
-
             const data = await response.json();
-
             if (!response.ok) {
                 setError(data.message || "Error al crear la cuenta");
                 return;
             }
-
             localStorage.setItem("token", data.token);
             localStorage.setItem("user", JSON.stringify(data.user));
             navigate("/onboarding");
-
         } catch (err) {
             setError("Error de conexión. Inténtalo de nuevo.");
         } finally {
@@ -47,69 +55,145 @@ export const Register = () => {
         }
     };
 
-    return (
-        <div className="min-h-screen bg-ivoire dark:bg-noche flex items-center justify-center px-6">
-            <div className="w-full max-w-sm">
+    const handleKeyDown = (e) => {
+        if (e.key === "Enter") handleSubmit();
+    };
 
-                <div className="mb-8">
-                    <p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-2">
-                        GIA
-                    </p>
-                    <h1 className="text-2xl font-medium tracking-tight text-noyer dark:text-mantequilla mb-1">
+    const borderColor = isDark ? "#3A4150" : "#DDD6CE";
+    const bg = isDark ? "#232830" : "#FAF8F6";
+    const cardBg = isDark ? "rgba(44,50,60,0.50)" : "#ffffff";
+
+    return (
+        <div style={{
+            minHeight: "100vh",
+            background: bg,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px"
+        }}>
+            <div style={{ width: "100%", maxWidth: "400px" }}>
+
+                {/* logo */}
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: "40px" }}>
+                    <LogoGia size={32} conTexto={true} />
+                </div>
+
+                {/* cabecera */}
+                <div style={{ marginBottom: "32px" }}>
+                    <h1 style={{
+                        fontSize: "24px", fontWeight: "500",
+                        color: isDark ? "#F0DFA8" : "#A9895C",
+                        letterSpacing: "-0.02em", marginBottom: "6px"
+                    }}>
                         Crea tu cuenta
                     </h1>
-                    <p className="text-sm text-gris-piedra">
+                    <p style={{ fontSize: "14px", color: "#BAB3AE" }}>
                         Empieza a trabajar con GIA en segundos.
                     </p>
                 </div>
 
-                <div className="border-t border-douche dark:border-noche-borde mb-8" />
+                {/* formulario */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
 
-                <form onSubmit={handleSubmit} className="space-y-3">
                     <input
                         type="text"
                         placeholder="¿Cómo te llamas?"
                         value={nombre}
                         onChange={e => setNombre(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl border border-douche dark:border-noche-borde bg-white dark:bg-noche-suave text-deep-ocean dark:text-ivoire placeholder:text-gris-piedra/40 text-sm outline-none focus:border-deep-ocean/40 dark:focus:border-sky/40 transition"
+                        onKeyDown={handleKeyDown}
+                        style={{
+                            width: "100%", padding: "12px 16px",
+                            borderRadius: "10px", border: `1px solid ${borderColor}`,
+                            background: cardBg, color: isDark ? "#FAF8F6" : "#3C5160",
+                            fontSize: "14px", outline: "none", boxSizing: "border-box"
+                        }}
                     />
+
                     <input
                         type="email"
                         placeholder="Email"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
-                        required
-                        className="w-full px-4 py-3 rounded-xl border border-douche dark:border-noche-borde bg-white dark:bg-noche-suave text-deep-ocean dark:text-ivoire placeholder:text-gris-piedra/40 text-sm outline-none focus:border-deep-ocean/40 dark:focus:border-sky/40 transition"
-                    />
-                    <input
-                        type="password"
-                        placeholder="Contraseña"
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        required
-                        className="w-full px-4 py-3 rounded-xl border border-douche dark:border-noche-borde bg-white dark:bg-noche-suave text-deep-ocean dark:text-ivoire placeholder:text-gris-piedra/40 text-sm outline-none focus:border-deep-ocean/40 dark:focus:border-sky/40 transition"
+                        onKeyDown={handleKeyDown}
+                        style={{
+                            width: "100%", padding: "12px 16px",
+                            borderRadius: "10px", border: `1px solid ${borderColor}`,
+                            background: cardBg, color: isDark ? "#FAF8F6" : "#3C5160",
+                            fontSize: "14px", outline: "none", boxSizing: "border-box"
+                        }}
                     />
 
+                    <div style={{ position: "relative" }}>
+                        <input
+                            type={showPassword ? "text" : "password"}
+                            placeholder="Contraseña"
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            style={{
+                                width: "100%", padding: "12px 44px 12px 16px",
+                                borderRadius: "10px", border: `1px solid ${borderColor}`,
+                                background: cardBg, color: isDark ? "#FAF8F6" : "#3C5160",
+                                fontSize: "14px", outline: "none", boxSizing: "border-box"
+                            }}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            style={{
+                                position: "absolute", right: "12px", top: "50%",
+                                transform: "translateY(-50%)",
+                                background: "none", border: "none",
+                                cursor: "pointer", color: "#BAB3AE",
+                                display: "flex", alignItems: "center"
+                            }}
+                        >
+                            {showPassword
+                                ? <EyeOff size={16} strokeWidth={1.5} />
+                                : <Eye size={16} strokeWidth={1.5} />
+                            }
+                        </button>
+                    </div>
+
                     {error && (
-                        <p className="text-xs text-red-500">{error}</p>
+                        <div style={{
+                            padding: "12px 16px", borderRadius: "10px",
+                            background: isDark ? "rgba(239,68,68,0.1)" : "rgba(239,68,68,0.06)",
+                            border: "1px solid rgba(239,68,68,0.2)",
+                            fontSize: "13px", color: "#ef4444"
+                        }}>
+                            {error}
+                        </div>
                     )}
 
                     <button
-                        type="submit"
+                        onClick={handleSubmit}
                         disabled={!email.trim() || !password.trim() || cargando}
-                        className="w-full px-4 py-3 rounded-xl bg-deep-ocean dark:bg-sky text-ivoire dark:text-noche text-sm font-medium hover:opacity-90 transition disabled:opacity-40"
+                        style={{
+                            width: "100%", padding: "13px",
+                            borderRadius: "10px",
+                            background: !email.trim() || !password.trim() || cargando
+                                ? (isDark ? "#3A4150" : "#DDD6CE")
+                                : "#3C5160",
+                            color: !email.trim() || !password.trim() || cargando
+                                ? "#BAB3AE" : "#FAF8F6",
+                            fontSize: "14px", fontWeight: "500",
+                            border: "none",
+                            cursor: !email.trim() || !password.trim() || cargando ? "default" : "pointer",
+                            transition: "all 0.2s", marginTop: "4px"
+                        }}
                     >
                         {cargando ? "Creando cuenta..." : "Crear cuenta"}
                     </button>
-                </form>
+                </div>
 
-                <p className="text-center text-xs text-gris-piedra mt-6">
+                <p style={{ textAlign: "center", fontSize: "13px", color: "#BAB3AE", marginTop: "24px" }}>
                     ¿Ya tienes cuenta?{" "}
-                    <Link to="/login" className="text-deep-ocean dark:text-sky hover:opacity-70 transition">
+                    <Link to="/login" style={{ color: isDark ? "#A9B5C2" : "#3C5160", fontWeight: "500", textDecoration: "none" }}>
                         Inicia sesión
                     </Link>
                 </p>
-
             </div>
         </div>
     );

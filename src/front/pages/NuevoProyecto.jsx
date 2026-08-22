@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, ArrowRight, FileText, Loader } from "lucide-react";
 
@@ -12,15 +12,26 @@ export const NuevoProyecto = () => {
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState("");
     const [conversacionId, setConversacionId] = useState(null);
+    const [isDark, setIsDark] = useState(
+        document.documentElement.classList.contains("dark")
+    );
+
+    useEffect(() => {
+        const observer = new MutationObserver(() => {
+            setIsDark(document.documentElement.classList.contains("dark"));
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+        return () => observer.disconnect();
+    }, []);
 
     const crearProyecto = async () => {
         if (!nombre.trim()) return;
         setCargando(true);
         setError("");
 
-        // timeout de 20 segundos — si groq no responde mostramos error
+        // timeout 60 segundos
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 20000);
+        const timeout = setTimeout(() => controller.abort(), 60000);
 
         try {
             const response = await fetch(
@@ -52,7 +63,7 @@ export const NuevoProyecto = () => {
         } catch (err) {
             clearTimeout(timeout);
             if (err.name === "AbortError") {
-                setError("GIA tardó demasiado en responder. Comprueba tu conexión e inténtalo de nuevo.");
+                setError("GIA tardó demasiado. Comprueba tu conexión e inténtalo de nuevo.");
             } else {
                 setError("Error de conexión. Comprueba que el servidor está activo.");
             }
@@ -63,7 +74,6 @@ export const NuevoProyecto = () => {
 
     const subirManual = async () => {
         if (!archivo || !conversacionId) {
-            // si no hay manual saltamos al chat directamente
             navigate(`/chat?conversation=${conversacionId}`);
             return;
         }
@@ -88,7 +98,6 @@ export const NuevoProyecto = () => {
                 navigate(`/chat?conversation=${conversacionId}`);
             } else {
                 setError("No se pudo subir el manual. Puedes subirlo más tarde desde el chat.");
-                // doy opción de continuar sin manual
             }
         } catch (err) {
             setError("Error subiendo el manual. Puedes continuar sin él.");
@@ -97,37 +106,55 @@ export const NuevoProyecto = () => {
         }
     };
 
-    return (
-        <div className="bg-ivoire dark:bg-noche min-h-screen">
-            <div className="max-w-lg mx-auto px-8 pt-10 pb-16">
+    const borderColor = isDark ? "#3A4150" : "#DDD6CE";
+    const bg = isDark ? "#232830" : "#FAF8F6";
+    const cardBg = isDark ? "rgba(44,50,60,0.50)" : "#ffffff";
 
+    return (
+        <div style={{ background: bg, minHeight: "100%", padding: "40px 48px" }}>
+            <div style={{ maxWidth: "560px" }}>
+
+                {/* volver */}
                 <button
                     onClick={() => paso === 1 ? navigate("/") : setPaso(1)}
-                    className="flex items-center gap-1.5 text-xs text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire transition-colors mb-8"
+                    style={{
+                        display: "flex", alignItems: "center", gap: "6px",
+                        fontSize: "13px", color: "#BAB3AE",
+                        background: "none", border: "none", cursor: "pointer",
+                        marginBottom: "40px", padding: 0
+                    }}
+                    className="hover:text-deep-ocean dark:hover:text-ivoire transition"
                 >
-                    <ArrowLeft size={13} strokeWidth={1.5} />
+                    <ArrowLeft size={14} strokeWidth={1.5} />
                     {paso === 1 ? "Inicio" : "Atrás"}
                 </button>
 
                 {/* stepper */}
-                <div className="flex items-center gap-1.5 mb-10">
+                <div style={{ display: "flex", gap: "6px", marginBottom: "40px" }}>
                     {[1, 2].map(i => (
                         <div
                             key={i}
-                            className={`h-0.5 flex-1 rounded-full transition-all ${i <= paso ? "bg-noyer dark:bg-mantequilla" : "bg-douche dark:bg-noche-borde"}`}
+                            style={{
+                                flex: 1, height: "3px", borderRadius: "2px",
+                                background: i <= paso ? "#A9895C" : borderColor,
+                                transition: "background 0.3s"
+                            }}
                         />
                     ))}
                 </div>
 
-                {/* paso 1 — nombre */}
+                {/* paso 1 */}
                 {paso === 1 && (
                     <div>
-                        <p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-2">
+                        <p style={{ fontSize: "11px", fontWeight: "600", letterSpacing: "0.12em", textTransform: "uppercase", color: "#BAB3AE", marginBottom: "8px" }}>
                             Paso 1 de 2
                         </p>
-                        <h1 className="text-xl font-medium tracking-tight text-noyer dark:text-mantequilla mb-6">
-                            ¿Cómo se llama el proyecto?
+                        <h1 style={{ fontSize: "24px", fontWeight: "500", color: isDark ? "#F0DFA8" : "#A9895C", letterSpacing: "-0.02em", marginBottom: "8px" }}>
+                            ¿Qué vas a hacer?
                         </h1>
+                        <p style={{ fontSize: "13px", color: "#BAB3AE", marginBottom: "32px" }}>
+                            Dale un nombre a tu proyecto — puede ser el mueble, electrodoméstico o lo que vayas a montar, reparar o instalar.
+                        </p>
 
                         <input
                             type="text"
@@ -136,84 +163,118 @@ export const NuevoProyecto = () => {
                             onKeyDown={e => e.key === "Enter" && nombre.trim() && !cargando && crearProyecto()}
                             placeholder="Ej: Armario IKEA dormitorio"
                             autoFocus
-                            className="w-full px-4 py-3 rounded-xl border border-douche dark:border-noche-borde bg-white dark:bg-noche-suave text-deep-ocean dark:text-ivoire placeholder:text-gris-piedra/40 text-sm outline-none focus:border-deep-ocean/40 dark:focus:border-sky/40 transition mb-4"
+                            style={{
+                                width: "100%",
+                                padding: "14px 16px",
+                                borderRadius: "10px",
+                                border: `1px solid ${borderColor}`,
+                                background: cardBg,
+                                color: isDark ? "#FAF8F6" : "#3C5160",
+                                fontSize: "14px",
+                                outline: "none",
+                                marginBottom: "8px",
+                                boxSizing: "border-box"
+                            }}
                         />
 
                         {error && (
-                            <p className="text-xs text-red-500 mb-4">{error}</p>
+                            <p style={{ fontSize: "12px", color: "#ef4444", marginBottom: "16px" }}>{error}</p>
                         )}
 
                         <button
                             onClick={crearProyecto}
                             disabled={!nombre.trim() || cargando}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-deep-ocean dark:bg-sky text-ivoire dark:text-noche text-sm font-medium hover:opacity-90 transition disabled:opacity-40"
+                            style={{
+                                display: "flex", alignItems: "center", gap: "8px",
+                                padding: "12px 24px", borderRadius: "10px",
+                                background: nombre.trim() && !cargando ? "#3C5160" : (isDark ? "#3A4150" : "#DDD6CE"),
+                                color: nombre.trim() && !cargando ? "#FAF8F6" : "#BAB3AE",
+                                fontSize: "14px", fontWeight: "500",
+                                border: "none", cursor: nombre.trim() && !cargando ? "pointer" : "default",
+                                marginTop: "16px", transition: "all 0.2s"
+                            }}
                         >
                             {cargando ? (
                                 <>
-                                    <Loader size={14} strokeWidth={1.5} className="animate-spin" />
+                                    <Loader size={15} strokeWidth={1.5} style={{ animation: "spin 0.8s linear infinite" }} />
                                     Creando proyecto...
                                 </>
                             ) : (
                                 <>
                                     Continuar
-                                    <ArrowRight size={14} strokeWidth={1.5} />
+                                    <ArrowRight size={15} strokeWidth={1.5} />
                                 </>
                             )}
                         </button>
 
                         {cargando && (
-                            <p className="text-xs text-gris-piedra mt-3">
-                                GIA está preparando tu proyecto. Puede tardar unos segundos...
+                            <p style={{ fontSize: "12px", color: "#BAB3AE", marginTop: "12px" }}>
+                                GIA está preparando tu proyecto. Puede tardar hasta 30 segundos...
                             </p>
                         )}
                     </div>
                 )}
 
-                {/* paso 2 — manual */}
+                {/* paso 2 */}
                 {paso === 2 && (
                     <div>
-                        <p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-2">
+                        <p style={{ fontSize: "11px", fontWeight: "600", letterSpacing: "0.12em", textTransform: "uppercase", color: "#BAB3AE", marginBottom: "8px" }}>
                             Paso 2 de 2
                         </p>
-                        <h1 className="text-xl font-medium tracking-tight text-noyer dark:text-mantequilla mb-2">
+                        <h1 style={{ fontSize: "24px", fontWeight: "500", color: isDark ? "#F0DFA8" : "#A9895C", letterSpacing: "-0.02em", marginBottom: "8px" }}>
                             ¿Tienes el manual en PDF?
                         </h1>
-                        <p className="text-sm text-gris-piedra mb-6">
+                        <p style={{ fontSize: "13px", color: "#BAB3AE", marginBottom: "32px" }}>
                             Es opcional. Puedes subirlo ahora o más tarde desde el chat.
                         </p>
 
-                        <label className={`w-full flex items-center justify-center gap-2 px-4 py-8 rounded-xl border-2 border-dashed cursor-pointer transition mb-4 ${archivo ? "border-noyer dark:border-mantequilla bg-noyer/5 dark:bg-mantequilla/5" : "border-douche dark:border-noche-borde hover:border-deep-ocean/30 dark:hover:border-sky/30"}`}>
-                            <input
-                                type="file"
-                                accept=".pdf"
-                                onChange={e => setArchivo(e.target.files[0])}
-                                className="hidden"
-                            />
-                            <FileText size={16} strokeWidth={1.5} className={archivo ? "text-noyer dark:text-mantequilla" : "text-gris-piedra"} />
-                            <span className={`text-sm ${archivo ? "text-noyer dark:text-mantequilla font-medium" : "text-gris-piedra"}`}>
+                        <label style={{
+                            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                            gap: "10px", padding: "40px 24px",
+                            borderRadius: "12px",
+                            border: `2px dashed ${archivo ? "#A9895C" : borderColor}`,
+                            background: archivo ? (isDark ? "rgba(169,137,92,0.08)" : "rgba(169,137,92,0.05)") : "transparent",
+                            cursor: "pointer", marginBottom: "24px",
+                            transition: "all 0.2s"
+                        }}>
+                            <input type="file" accept=".pdf" onChange={e => setArchivo(e.target.files[0])} style={{ display: "none" }} />
+                            <FileText size={24} strokeWidth={1.4} style={{ color: archivo ? "#A9895C" : "#BAB3AE" }} />
+                            <span style={{ fontSize: "14px", color: archivo ? "#A9895C" : "#BAB3AE", fontWeight: archivo ? "500" : "400" }}>
                                 {archivo ? archivo.name : "Seleccionar PDF"}
                             </span>
+                            {!archivo && (
+                                <span style={{ fontSize: "12px", color: "#BAB3AE" }}>
+                                    Pulsa para seleccionar
+                                </span>
+                            )}
                         </label>
 
                         {error && (
-                            <p className="text-xs text-red-500 mb-4">{error}</p>
+                            <p style={{ fontSize: "12px", color: "#ef4444", marginBottom: "16px" }}>{error}</p>
                         )}
 
-                        <div className="flex gap-3">
+                        <div style={{ display: "flex", gap: "12px" }}>
                             <button
                                 onClick={subirManual}
                                 disabled={cargando}
-                                className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-deep-ocean dark:bg-sky text-ivoire dark:text-noche text-sm font-medium hover:opacity-90 transition disabled:opacity-40"
+                                style={{
+                                    display: "flex", alignItems: "center", gap: "8px",
+                                    padding: "12px 24px", borderRadius: "10px",
+                                    background: "#3C5160", color: "#FAF8F6",
+                                    fontSize: "14px", fontWeight: "500",
+                                    border: "none", cursor: cargando ? "default" : "pointer",
+                                    opacity: cargando ? 0.7 : 1, transition: "opacity 0.2s"
+                                }}
                             >
                                 {cargando ? (
                                     <>
-                                        <Loader size={14} strokeWidth={1.5} className="animate-spin" />
-                                        {archivo ? "Subiendo manual..." : "Abriendo chat..."}
+                                        <Loader size={15} strokeWidth={1.5} style={{ animation: "spin 0.8s linear infinite" }} />
+                                        {archivo ? "Subiendo..." : "Abriendo chat..."}
                                     </>
                                 ) : (
                                     <>
                                         {archivo ? "Subir y empezar" : "Empezar sin manual"}
-                                        <ArrowRight size={14} strokeWidth={1.5} />
+                                        <ArrowRight size={15} strokeWidth={1.5} />
                                     </>
                                 )}
                             </button>
@@ -221,7 +282,12 @@ export const NuevoProyecto = () => {
                             {archivo && (
                                 <button
                                     onClick={() => navigate(`/chat?conversation=${conversacionId}`)}
-                                    className="px-4 py-2.5 rounded-lg border border-douche dark:border-noche-borde text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire text-sm transition"
+                                    style={{
+                                        padding: "12px 20px", borderRadius: "10px",
+                                        background: "transparent", color: "#BAB3AE",
+                                        fontSize: "14px", border: `1px solid ${borderColor}`,
+                                        cursor: "pointer"
+                                    }}
                                 >
                                     Saltar por ahora
                                 </button>
@@ -230,6 +296,10 @@ export const NuevoProyecto = () => {
                     </div>
                 )}
             </div>
+
+            <style>{`
+                @keyframes spin { to { transform: rotate(360deg); } }
+            `}</style>
         </div>
     );
 };

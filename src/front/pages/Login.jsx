@@ -1,141 +1,206 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ToggleTema } from "../components/ToggleTema";
+import { LogoGia } from "../components/LogoGia";
+import { Eye, EyeOff } from "lucide-react";
 
 export const Login = () => {
-    // aqui guardo lo que el usuario escribe
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    // para el ojito de ver la contraseña
     const [showPassword, setShowPassword] = useState(false);
-    // para mostrar errores del backend
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const [isDark, setIsDark] = useState(
+        document.documentElement.classList.contains("dark")
+    );
 
     const navigate = useNavigate();
 
+    useEffect(() => {
+        const observer = new MutationObserver(() => {
+            setIsDark(document.documentElement.classList.contains("dark"));
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+        return () => observer.disconnect();
+    }, []);
+
     const handleSubmit = async () => {
         setError("");
-
         if (!email || !password) {
-            setError("rellena el email y la contraseña");
+            setError("Rellena el email y la contraseña");
             return;
         }
-
         setLoading(true);
-
         try {
-            const backendUrl = import.meta.env.VITE_BACKEND_URL;
-            // la ruta cambio a /api/auth/login cuando reorganizamos las rutas
-            const response = await fetch(backendUrl + "/api/auth/login", {
+            const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email, password })
             });
-
             const data = await response.json();
-
             if (!response.ok) {
-                // si el backend devuelve error, lo muestro
-                setError(data.message || "algo salio mal");
+                setError(data.message || "Algo salió mal");
                 setLoading(false);
                 return;
             }
-
-            // guardo el token para las siguientes peticiones
             localStorage.setItem("token", data.token);
             localStorage.setItem("user", JSON.stringify(data.user));
-
             navigate("/");
-
         } catch (err) {
-            setError("no pude conectar con el servidor");
+            setError("No pude conectar con el servidor");
         }
-
         setLoading(false);
     };
 
-    return (
-        <div className="min-h-screen flex items-center justify-center bg-ivoire dark:bg-noche px-4">
-            <div className="w-full max-w-md">
+    const handleKeyDown = (e) => {
+        if (e.key === "Enter") handleSubmit();
+    };
 
-                <div className="flex justify-end mb-4">
-                    <ToggleTema />
+    const borderColor = isDark ? "#3A4150" : "#DDD6CE";
+    const bg = isDark ? "#232830" : "#FAF8F6";
+    const cardBg = isDark ? "rgba(44,50,60,0.50)" : "#ffffff";
+
+    return (
+        <div style={{
+            minHeight: "100vh",
+            background: bg,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px"
+        }}>
+            <div style={{ width: "100%", maxWidth: "400px" }}>
+
+                {/* logo */}
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: "40px" }}>
+                    <LogoGia size={32} conTexto={true} />
                 </div>
 
-                <h1 className="text-3xl font-semibold text-deep-ocean dark:text-ivoire mb-2">
-                    Bienvenida de vuelta
-                </h1>
-                <p className="text-gris-piedra mb-8">
-                    Entra para seguir con tus montajes
-                </p>
+                {/* cabecera */}
+                <div style={{ marginBottom: "32px" }}>
+                    <h1 style={{
+                        fontSize: "24px", fontWeight: "500",
+                        color: isDark ? "#F0DFA8" : "#A9895C",
+                        letterSpacing: "-0.02em", marginBottom: "6px"
+                    }}>
+                        Bienvenida de vuelta
+                    </h1>
+                    <p style={{ fontSize: "14px", color: "#BAB3AE" }}>
+                        Entra para seguir con tus proyectos
+                    </p>
+                </div>
 
-                <div className="space-y-4">
+                {/* formulario */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+
+                    {/* email */}
                     <div>
-                        <label className="block text-sm font-medium text-deep-ocean dark:text-ivoire mb-1.5">
+                        <label style={{ display: "block", fontSize: "12px", fontWeight: "500", color: isDark ? "#A9B5C2" : "#3C5160", marginBottom: "6px", letterSpacing: "0.02em" }}>
                             Email
                         </label>
                         <input
                             type="email"
                             value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            onChange={e => setEmail(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             placeholder="tu@email.com"
-                            className="w-full px-4 py-3 rounded-xl border border-douche bg-white text-deep-ocean placeholder:text-gris-piedra dark:bg-noche-suave dark:border-noche-borde dark:text-ivoire outline-none focus:border-ocean-vivo transition"
+                            style={{
+                                width: "100%",
+                                padding: "12px 16px",
+                                borderRadius: "10px",
+                                border: `1px solid ${borderColor}`,
+                                background: cardBg,
+                                color: isDark ? "#FAF8F6" : "#3C5160",
+                                fontSize: "14px",
+                                outline: "none",
+                                boxSizing: "border-box",
+                                transition: "border-color 0.2s"
+                            }}
                         />
                     </div>
 
+                    {/* contraseña */}
                     <div>
-                        <label className="block text-sm font-medium text-deep-ocean dark:text-ivoire mb-1.5">
+                        <label style={{ display: "block", fontSize: "12px", fontWeight: "500", color: isDark ? "#A9B5C2" : "#3C5160", marginBottom: "6px", letterSpacing: "0.02em" }}>
                             Contraseña
                         </label>
-                        <div className="relative">
+                        <div style={{ position: "relative" }}>
                             <input
                                 type={showPassword ? "text" : "password"}
                                 value={password}
-                                onChange={(e) => setPassword(e.target.value)}
+                                onChange={e => setPassword(e.target.value)}
+                                onKeyDown={handleKeyDown}
                                 placeholder="tu contraseña"
-                                className="w-full px-4 py-3 pr-12 rounded-xl border border-douche bg-white text-deep-ocean placeholder:text-gris-piedra dark:bg-noche-suave dark:border-noche-borde dark:text-ivoire outline-none focus:border-ocean-vivo transition"
+                                style={{
+                                    width: "100%",
+                                    padding: "12px 44px 12px 16px",
+                                    borderRadius: "10px",
+                                    border: `1px solid ${borderColor}`,
+                                    background: cardBg,
+                                    color: isDark ? "#FAF8F6" : "#3C5160",
+                                    fontSize: "14px",
+                                    outline: "none",
+                                    boxSizing: "border-box"
+                                }}
                             />
-                            {/* el ojito para ver la contraseña */}
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire transition"
+                                style={{
+                                    position: "absolute", right: "12px", top: "50%",
+                                    transform: "translateY(-50%)",
+                                    background: "none", border: "none",
+                                    cursor: "pointer", color: "#BAB3AE",
+                                    display: "flex", alignItems: "center"
+                                }}
                             >
-                                {showPassword ? (
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                                        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                                        <path d="M1 1l22 22M6.61 6.61A13.5 13.5 0 0 0 2 12s3 8 10 8a9.7 9.7 0 0 0 5.39-1.61" />
-                                    </svg>
-                                ) : (
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                                        <path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8z" />
-                                        <circle cx="12" cy="12" r="3" />
-                                    </svg>
-                                )}
+                                {showPassword
+                                    ? <EyeOff size={16} strokeWidth={1.5} />
+                                    : <Eye size={16} strokeWidth={1.5} />
+                                }
                             </button>
                         </div>
                     </div>
 
-                    {/* aqui sale el error si algo falla */}
+                    {/* error */}
                     {error && (
-                        <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950/30 dark:text-red-400 px-4 py-3 rounded-xl">
+                        <div style={{
+                            padding: "12px 16px",
+                            borderRadius: "10px",
+                            background: isDark ? "rgba(239,68,68,0.1)" : "rgba(239,68,68,0.06)",
+                            border: "1px solid rgba(239,68,68,0.2)",
+                            fontSize: "13px",
+                            color: "#ef4444"
+                        }}>
                             {error}
-                        </p>
+                        </div>
                     )}
 
+                    {/* botón */}
                     <button
                         onClick={handleSubmit}
                         disabled={loading}
-                        className="w-full bg-gradient-to-br from-ocean-vivo to-deep-ocean text-ivoire py-3.5 rounded-xl font-semibold shadow-lg shadow-deep-ocean/30 hover:shadow-xl hover:shadow-deep-ocean/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 disabled:opacity-50 dark:from-sky dark:to-clouds dark:text-noche dark:shadow-sky/20"
+                        style={{
+                            width: "100%",
+                            padding: "13px",
+                            borderRadius: "10px",
+                            background: loading ? (isDark ? "#3A4150" : "#DDD6CE") : "#3C5160",
+                            color: loading ? "#BAB3AE" : "#FAF8F6",
+                            fontSize: "14px",
+                            fontWeight: "500",
+                            border: "none",
+                            cursor: loading ? "default" : "pointer",
+                            transition: "all 0.2s",
+                            marginTop: "4px"
+                        }}
                     >
-                        {loading ? "Entrando…" : "Entrar"}
+                        {loading ? "Entrando..." : "Entrar"}
                     </button>
                 </div>
 
-                <p className="text-center text-sm text-gris-piedra mt-6">
+                {/* registro */}
+                <p style={{ textAlign: "center", fontSize: "13px", color: "#BAB3AE", marginTop: "24px" }}>
                     ¿Todavía no tienes cuenta?{" "}
-                    <Link to="/register" className="text-deep-ocean dark:text-sky font-semibold hover:underline">
+                    <Link to="/register" style={{ color: isDark ? "#A9B5C2" : "#3C5160", fontWeight: "500", textDecoration: "none" }}>
                         Regístrate
                     </Link>
                 </p>
