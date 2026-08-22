@@ -1,72 +1,40 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, BookOpen, Search, MoreHorizontal, CheckCircle, Circle, XCircle, Clock } from "lucide-react";
+import {
+    Hammer, Wrench, Plus, Trash2, ArrowRight, BookOpen,
+    Lightbulb, Tv, Armchair, Wind, Drill, Thermometer,
+    WashingMachine, Refrigerator, Layers, Package, FileText
+} from "lucide-react";
 
-const ESTADOS = ["Todos", "en_progreso", "completado", "pausado", "cancelado"];
-
-const ACCIONES_MENU = [
-    { id: "desmontar", label: "Desmontar" },
-    { id: "reparar", label: "Reparar" },
-    { id: "mejorar", label: "Mejorar" },
-    { id: "modificar", label: "Modificar" },
-    { id: "archivar", label: "Archivar" },
-    { id: "eliminar", label: "Eliminar", peligro: true },
-];
-
-const contextoAccion = (accion, titulo) => ({
-    desmontar: `Quiero desmontar ${titulo}. Reutiliza todo el historial del montaje original para guiarme en el desmontaje correcto.`,
-    reparar: `Quiero reparar ${titulo}. Usa el historial del proyecto original para identificar las piezas, referencias y herramientas necesarias.`,
-    mejorar: `Quiero mejorar ${titulo}. Usa el historial del proyecto para proponer mejoras compatibles con el montaje actual.`,
-    modificar: `Quiero modificar ${titulo}. Analiza el proyecto original y propone cómo reutilizar piezas existentes.`,
-}[accion]);
-
-const EstadoBadge = ({ status }) => {
-    const config = {
-        completado: {
-            icono: <CheckCircle size={12} strokeWidth={1.5} />,
-            label: "Completado",
-            clase: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20"
-        },
-        en_progreso: {
-            icono: <Circle size={12} strokeWidth={1.5} />,
-            label: "En curso",
-            clase: "text-deep-ocean dark:text-sky bg-deep-ocean/5 dark:bg-sky/10"
-        },
-        cancelado: {
-            icono: <XCircle size={12} strokeWidth={1.5} />,
-            label: "Cancelado",
-            clase: "text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20"
-        },
-        pausado: {
-            icono: <Clock size={12} strokeWidth={1.5} />,
-            label: "Pausado",
-            clase: "text-gris-piedra bg-douche dark:bg-noche-borde"
-        },
-    };
-
-    const c = config[status] || config["en_progreso"];
-
-    return (
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium ${c.clase}`}>
-            {c.icono}
-            {c.label}
-        </span>
-    );
+const detectarIcono = (titulo) => {
+    if (!titulo) return Hammer;
+    const t = titulo.toLowerCase();
+    if (t.includes("lámpara") || t.includes("luz") || t.includes("iluminación")) return Lightbulb;
+    if (t.includes("tv") || t.includes("televisor") || t.includes("pantalla")) return Tv;
+    if (t.includes("silla") || t.includes("sillón") || t.includes("sofá")) return Armchair;
+    if (t.includes("aire") || t.includes("ventilador") || t.includes("climatización")) return Wind;
+    if (t.includes("calefacción") || t.includes("radiador") || t.includes("termostato")) return Thermometer;
+    if (t.includes("nevera") || t.includes("frigorífico")) return Refrigerator;
+    if (t.includes("lavadora") || t.includes("secadora") || t.includes("lavavajillas")) return WashingMachine;
+    if (t.includes("taladro") || t.includes("colgar") || t.includes("pared")) return Drill;
+    if (t.includes("mueble") || t.includes("armario") || t.includes("cómoda") || t.includes("mesa") || t.includes("estantería")) return Layers;
+    if (t.includes("reparar") || t.includes("arreglar") || t.includes("restaurar")) return Wrench;
+    if (t.includes("instalar")) return Package;
+    return Hammer;
 };
 
-const BarraProgreso = ({ progreso }) => (
-    <div className="flex items-center gap-2 min-w-[80px]">
-        <div className="flex-1 h-1 bg-douche dark:bg-noche-borde rounded-full overflow-hidden">
-            <div
-                className="h-full bg-noyer dark:bg-mantequilla rounded-full transition-all duration-500"
-                style={{ width: `${progreso || 0}%` }}
-            />
-        </div>
-        <span className="text-[10px] text-gris-piedra flex-shrink-0 w-7 text-right">
-            {progreso || 0}%
-        </span>
-    </div>
-);
+const tiempoRelativo = (fechaStr) => {
+    if (!fechaStr) return "";
+    const diff = Date.now() - new Date(fechaStr).getTime();
+    const min = Math.floor(diff / 60000);
+    const h = Math.floor(diff / 3600000);
+    const d = Math.floor(diff / 86400000);
+    if (min < 2) return "Ahora mismo";
+    if (min < 60) return `Hace ${min} min`;
+    if (h < 24) return `Hace ${h}h`;
+    if (d === 1) return "Ayer";
+    return `Hace ${d} días`;
+};
 
 export const MisGuias = () => {
     const navigate = useNavigate();
@@ -74,209 +42,151 @@ export const MisGuias = () => {
 
     const [guias, setGuias] = useState([]);
     const [cargando, setCargando] = useState(true);
-    const [busqueda, setBusqueda] = useState("");
-    const [filtroEstado, setFiltroEstado] = useState("Todos");
-    const [menuAbierto, setMenuAbierto] = useState(null);
-    const menuRef = useRef(null);
+    const [isDark, setIsDark] = useState(
+        document.documentElement.classList.contains("dark")
+    );
 
     useEffect(() => {
-        if (!token) { navigate("/login"); return; }
-        fetch(`${import.meta.env.VITE_BACKEND_URL}/api/conversations?type=guia`, {
-            headers: { Authorization: `Bearer ${token}` }
+        const observer = new MutationObserver(() => {
+            setIsDark(document.documentElement.classList.contains("dark"));
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+        return () => observer.disconnect();
+    }, []);
+
+    useEffect(() => {
+        if (!token) return;
+        fetch(`${import.meta.env.VITE_BACKEND_URL}/api/conversations`, {
+            headers: { "Authorization": `Bearer ${token}` }
         })
             .then(r => r.json())
-            .then(data => setGuias(data.items || []))
+            .then(data => {
+                // solo proyectos que tienen manual
+                const conManual = (data.items || []).filter(c => c.has_manual);
+                setGuias(conManual);
+            })
             .catch(() => { })
             .finally(() => setCargando(false));
     }, []);
 
-    useEffect(() => {
-        const handler = (e) => {
-            if (menuRef.current && !menuRef.current.contains(e.target)) {
-                setMenuAbierto(null);
-            }
-        };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, []);
-
-    const guiasFiltradas = guias.filter(g => {
-        const coincideBusqueda = !busqueda ||
-            (g.title || "").toLowerCase().includes(busqueda.toLowerCase());
-        const coincideEstado = filtroEstado === "Todos" || g.status === filtroEstado;
-        return coincideBusqueda && coincideEstado;
-    });
-
-    const ejecutarAccion = (accion, guia) => {
-        setMenuAbierto(null);
-        if (accion === "eliminar") {
-            if (!window.confirm(`¿Eliminar "${guia.title}"? No se puede deshacer.`)) return;
-            fetch(`${import.meta.env.VITE_BACKEND_URL}/api/conversations/${guia.id}`, {
-                method: "DELETE",
-                headers: { Authorization: `Bearer ${token}` }
-            }).then(() => setGuias(prev => prev.filter(g => g.id !== guia.id)));
-            return;
-        }
-        if (accion === "archivar") {
-            navigate(`/proyecto/${guia.id}`);
-            return;
-        }
-        const contexto = contextoAccion(accion, guia.title || "este proyecto");
-        if (contexto) {
-            sessionStorage.setItem("gia_contexto_inicial", contexto);
-            sessionStorage.setItem("gia_proyecto_id", guia.id);
-            navigate(`/chat?conversation=${guia.id}`);
-        }
-    };
+    const borderColor = isDark ? "#3A4150" : "#DDD6CE";
+    const bg = isDark ? "#232830" : "#FAF8F6";
 
     return (
-        <div className="bg-ivoire dark:bg-noche min-h-screen">
-            <div className="max-w-4xl mx-auto px-8 pt-10 pb-16">
+        <div style={{ background: bg, minHeight: "100%", padding: "40px 48px" }}>
+            <div style={{ maxWidth: "1200px", width: "100%" }}>
 
-                <button
-                    onClick={() => navigate("/")}
-                    className="flex items-center gap-1.5 text-xs text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire transition-colors mb-8"
-                >
-                    <ArrowLeft size={13} strokeWidth={1.5} />
-                    Inicio
-                </button>
-
-                <div className="mb-8">
-                    <p className="text-[9px] font-semibold tracking-[0.16em] uppercase text-gris-piedra mb-1">
-                        Biblioteca técnica
-                    </p>
-                    <h1 className="text-xl font-medium tracking-tight text-noyer dark:text-mantequilla">
-                        Mis guías
-                    </h1>
-                    <p className="text-sm text-gris-piedra mt-0.5">
-                        El expediente técnico completo de cada objeto.
-                    </p>
-                </div>
-
-                <div className="border-t border-douche dark:border-noche-borde mb-6" />
-
-                {/* buscador y filtros */}
-                <div className="flex flex-col sm:flex-row gap-3 mb-6">
-                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-douche dark:border-noche-borde bg-white dark:bg-noche-suave flex-1">
-                        <Search size={14} strokeWidth={1.5} className="text-gris-piedra flex-shrink-0" />
-                        <input
-                            type="text"
-                            value={busqueda}
-                            onChange={e => setBusqueda(e.target.value)}
-                            placeholder="Buscar por nombre..."
-                            className="flex-1 text-sm bg-transparent text-deep-ocean dark:text-ivoire placeholder:text-gris-piedra/40 outline-none"
-                        />
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                        {ESTADOS.map(estado => (
-                            <button
-                                key={estado}
-                                onClick={() => setFiltroEstado(estado)}
-                                className={`px-3 py-1 rounded-lg text-xs transition-all whitespace-nowrap ${filtroEstado === estado
-                                    ? "bg-deep-ocean dark:bg-sky text-ivoire dark:text-noche font-medium"
-                                    : "border border-douche dark:border-noche-borde text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire"
-                                    }`}
-                            >
-                                {estado === "Todos" ? "Todos" :
-                                    estado === "en_progreso" ? "En curso" :
-                                        estado === "completado" ? "Completado" :
-                                            estado === "pausado" ? "Pausado" : "Cancelado"}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* panel de datos */}
-                {cargando ? (
-                    <div className="flex justify-center py-16">
-                        <div className="w-4 h-4 border-2 border-douche border-t-gris-piedra rounded-full animate-spin" />
-                    </div>
-                ) : guiasFiltradas.length === 0 ? (
-                    <div className="text-center py-16">
-                        <BookOpen size={32} strokeWidth={1} className="text-gris-piedra/30 mx-auto mb-4" />
-                        <p className="text-sm text-gris-piedra mb-2">
-                            {busqueda ? "No hay guías que coincidan." : "Aún no tienes guías."}
+                {/* cabecera */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "32px" }}>
+                    <div>
+                        <h1 style={{ fontSize: "24px", fontWeight: "500", color: isDark ? "#F0DFA8" : "#A9895C", letterSpacing: "-0.02em", marginBottom: "4px" }}>
+                            Manuales
+                        </h1>
+                        <p style={{ fontSize: "13px", color: "#BAB3AE" }}>
+                            {guias.length} {guias.length === 1 ? "manual analizado" : "manuales analizados"}
                         </p>
-                        {!busqueda && (
-                            <p className="text-xs text-gris-piedra/50">
-                                Las guías son expedientes técnicos de objetos.
-                            </p>
-                        )}
+                    </div>
+                    <button
+                        onClick={() => navigate("/chat")}
+                        style={{
+                            display: "flex", alignItems: "center", gap: "8px",
+                            padding: "10px 18px", borderRadius: "10px",
+                            background: "#3C5160", color: "#FAF8F6",
+                            fontSize: "13px", fontWeight: "500",
+                            border: "none", cursor: "pointer"
+                        }}
+                    >
+                        <Plus size={15} strokeWidth={2} />
+                        Subir manual
+                    </button>
+                </div>
+
+                {/* contenido */}
+                {cargando ? (
+                    <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
+                        <div style={{ width: "24px", height: "24px", border: `2px solid ${borderColor}`, borderTopColor: "#A9895C", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                    </div>
+                ) : guias.length === 0 ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 0", gap: "12px" }}>
+                        <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: isDark ? "#2C323C" : "#F0EDE8", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <BookOpen size={22} strokeWidth={1.4} style={{ color: "#A9895C" }} />
+                        </div>
+                        <p style={{ fontSize: "15px", fontWeight: "500", color: isDark ? "#FAF8F6" : "#3C5160" }}>
+                            Aún no tienes manuales analizados
+                        </p>
+                        <p style={{ fontSize: "13px", color: "#BAB3AE", textAlign: "center", maxWidth: "300px" }}>
+                            Sube un PDF en cualquier conversación y GIA lo analizará automáticamente.
+                        </p>
+                        <button
+                            onClick={() => navigate("/chat")}
+                            style={{ marginTop: "8px", padding: "10px 20px", borderRadius: "10px", background: "#3C5160", color: "#FAF8F6", fontSize: "13px", border: "none", cursor: "pointer" }}
+                        >
+                            Ir al chat
+                        </button>
                     </div>
                 ) : (
-                    <div className="rounded-xl border border-douche dark:border-noche-borde overflow-hidden">
-
-                        {/* cabecera tabla */}
-                        <div className="grid grid-cols-[1fr_120px_100px_80px] gap-4 px-4 py-2.5 bg-white dark:bg-noche-suave border-b border-douche dark:border-noche-borde">
-                            <span className="text-[9px] font-semibold tracking-[0.14em] uppercase text-gris-piedra">Proyecto</span>
-                            <span className="text-[9px] font-semibold tracking-[0.14em] uppercase text-gris-piedra">Estado</span>
-                            <span className="text-[9px] font-semibold tracking-[0.14em] uppercase text-gris-piedra">Progreso</span>
-                            <span className="text-[9px] font-semibold tracking-[0.14em] uppercase text-gris-piedra text-right">Acciones</span>
-                        </div>
-
-                        {/* filas */}
-                        <div ref={menuRef}>
-                            {guiasFiltradas.map((guia, i) => (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "16px" }}>
+                        {guias.map(guia => {
+                            const Icono = detectarIcono(guia.title);
+                            return (
                                 <div
                                     key={guia.id}
-                                    className={`grid grid-cols-[1fr_120px_100px_80px] gap-4 px-4 py-3.5 items-center hover:bg-douche/30 dark:hover:bg-white/3 transition ${i !== guiasFiltradas.length - 1 ? "border-b border-douche dark:border-noche-borde" : ""}`}
+                                    onClick={() => navigate(`/chat?conversation=${guia.id}`)}
+                                    style={{
+                                        background: isDark ? "rgba(44,50,60,0.50)" : "#ffffff",
+                                        border: `1px solid ${borderColor}`,
+                                        borderRadius: "12px",
+                                        padding: "20px",
+                                        cursor: "pointer",
+                                        transition: "all 0.15s"
+                                    }}
+                                    className="hover:-translate-y-0.5"
                                 >
-                                    {/* nombre */}
-                                    <button
-                                        onClick={() => navigate(`/proyecto/${guia.id}`)}
-                                        className="text-left min-w-0"
-                                    >
-                                        <p className="text-sm font-medium text-noyer dark:text-mantequilla truncate">
-                                            {guia.title || "Sin título"}
-                                        </p>
-                                        {guia.has_manual && (
-                                            <span className="text-[10px] text-gris-piedra">Manual</span>
-                                        )}
-                                    </button>
-
-                                    {/* estado */}
-                                    <div>
-                                        <EstadoBadge status={guia.status} />
+                                    <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "14px" }}>
+                                        <div style={{
+                                            width: "40px", height: "40px", borderRadius: "10px",
+                                            background: isDark ? "#3A4150" : "#F0EDE8",
+                                            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+                                        }}>
+                                            <Icono size={18} strokeWidth={1.4} style={{ color: "#A9895C" }} />
+                                        </div>
+                                        <div style={{ minWidth: 0 }}>
+                                            <p style={{ fontSize: "14px", fontWeight: "500", color: isDark ? "#FAF8F6" : "#3C5160", marginBottom: "3px", lineHeight: "1.3" }}>
+                                                {guia.title || "Sin título"}
+                                            </p>
+                                            <p style={{ fontSize: "11px", color: "#BAB3AE" }}>
+                                                {tiempoRelativo(guia.updated_at)}
+                                            </p>
+                                        </div>
                                     </div>
 
-                                    {/* progreso */}
-                                    <BarraProgreso progreso={guia.progress} />
-
-                                    {/* acciones */}
-                                    <div className="flex justify-end relative">
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setMenuAbierto(menuAbierto === guia.id ? null : guia.id);
-                                            }}
-                                            className="w-7 h-7 rounded-lg flex items-center justify-center text-gris-piedra hover:text-deep-ocean dark:hover:text-ivoire hover:bg-douche/50 dark:hover:bg-white/5 transition"
-                                        >
-                                            <MoreHorizontal size={14} strokeWidth={1.5} />
-                                        </button>
-
-                                        {menuAbierto === guia.id && (
-                                            <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-douche dark:border-noche-borde bg-white dark:bg-noche-suave shadow-lg overflow-hidden z-50">
-                                                {ACCIONES_MENU.map(accion => (
-                                                    <button
-                                                        key={accion.id}
-                                                        onClick={() => ejecutarAccion(accion.id, guia)}
-                                                        className={`w-full text-left px-4 py-2.5 text-xs transition ${accion.peligro
-                                                            ? "text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
-                                                            : "text-deep-ocean dark:text-ivoire hover:bg-douche/40 dark:hover:bg-white/5"
-                                                            }`}
-                                                    >
-                                                        {accion.label}
-                                                    </button>
-                                                ))}
-                                            </div>
+                                    {/* badge manual */}
+                                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "16px" }}>
+                                        <FileText size={12} strokeWidth={1.5} style={{ color: "#A9895C" }} />
+                                        <span style={{ fontSize: "11px", color: "#A9895C", fontWeight: "500" }}>
+                                            Manual analizado
+                                        </span>
+                                        {guia.status === "completado" && (
+                                            <>
+                                                <span style={{ color: borderColor }}>·</span>
+                                                <span style={{ fontSize: "11px", color: "#4CAF50", fontWeight: "500" }}>Completado</span>
+                                            </>
                                         )}
+                                    </div>
+
+                                    <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", color: isDark ? "#A9B5C2" : "#3C5160", fontWeight: "500" }}>
+                                        Abrir guía <ArrowRight size={13} strokeWidth={1.5} />
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+                            );
+                        })}
                     </div>
                 )}
             </div>
+
+            <style>{`
+                @keyframes spin { to { transform: rotate(360deg); } }
+            `}</style>
         </div>
     );
 };
